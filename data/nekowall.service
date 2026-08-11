@@ -1,0 +1,15 @@
+[Unit]
+Description=Set a wallpaper from nekos.moe
+Documentation=https://nekoawai.moe
+# Once there is a wallpaper, the choice belongs to whoever is sitting there.
+# This unit is for the first login of a system that has none.
+ConditionPathExists=!%h/.local/share/nekowall/current.json
+After=graphical-session.target
+PartOf=graphical-session.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/nekowall --set
+
+[Install]
+WantedBy=graphical-session.target

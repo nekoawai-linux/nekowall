@@ -1,0 +1,21 @@
+# Release archives, produced by `make dist` and published as release assets
+/dist/
+
+# Assistant tooling
+/.claude/
+/.codex/
+/.agents/
+/.cursor/
+/.aider*
+/CLAUDE.md
+/AGENTS.md
+/GEMINI.md
+/.github/copilot-instructions.md
+
+# Editors and desktops
+*~
+*.sw?
+.DS_Store
+
+# CMake build tree
+/build/
