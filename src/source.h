@@ -14,7 +14,7 @@ class QJsonObject;
 class QNetworkAccessManager;
 
 // One picture, as a gallery describes it. nekos.moe says nothing about
-// dimensions, waifu.im says everything -- so `size` is filled in when it is
+// dimensions, the boorus say everything -- so `size` is filled in when it is
 // known and left invalid when it is not.
 struct Artwork {
 	Provider provider = Provider::NekosMoe;
@@ -68,7 +68,8 @@ private:
 	bool acceptable(const QStringList &tags, bool adult) const;
 
 	QVector<Artwork> parseNekos(const QByteArray &json) const;
-	QVector<Artwork> parseWaifu(const QByteArray &json) const;
+	QVector<Artwork> parseSafebooru(const QByteArray &json) const;
+	QVector<Artwork> parseDanbooru(const QByteArray &json) const;
 
 	QNetworkAccessManager *m_network;
 	QSize m_target;

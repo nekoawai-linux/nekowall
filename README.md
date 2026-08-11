@@ -2,7 +2,7 @@
 
 # nekowall
 
-**Random art from [nekos.moe](https://nekos.moe) and [waifu.im](https://waifu.im) on the desktop, drawn to the size of the screen the machine is actually running.**
+**Random art from [nekos.moe](https://nekos.moe), [safebooru](https://safebooru.org) and [danbooru](https://danbooru.donmai.us) on the desktop, drawn to the size of the screen the machine is actually running.**
 
 </div>
 
@@ -36,9 +36,10 @@ where the picture lives, with "another one" and "use as wallpaper".
 
 The **Filters** tab is pills to press, nothing to type:
 
-- **Galleries** -- nekos.moe, waifu.im, or both. With both, each is asked once
-  and the pictures are taken from them in turn: three from each in a normal
-  run, so neither decides the whole thing.
+- **Galleries** -- nekos.moe, safebooru, danbooru, in any combination. Each
+  chosen one is asked once and the pictures are taken from them in turn, so
+  none of them decides the whole run: three from each of two, two from each of
+  three. The last one cannot be switched off.
 - **What to search** -- Safe, NSFW, or All. The gallery marks its own
   pictures and that mark is all this chooses by.
 - **Wallpaper size** -- Auto, HD, Full HD, 2K, 4K, a size of your own, or
@@ -49,17 +50,29 @@ The **Filters** tab is pills to press, nothing to type:
   to search.
 - **Never show pictures tagged** -- holds in every mode.
 
-The offered tags are the ones that exist, counted against both galleries
-before they got in. nekos.moe writes tags in the singular (`flower` has
-plenty, `flowers` has none) and is a gallery of characters rather than places
--- `city` had one picture, `sea` none -- so no scenery is offered. waifu.im
-has twenty tags in total, of which `maid`, `uniform` and `rem` are also
-nekos.moe's; the rest of its own are its characters. A tag only one gallery
-knows is dimmed while the other is the only one chosen.
+Every tag says what each gallery calls it. nekos.moe has its own names,
+written in the singular and with spaces; the two boorus share the Danbooru
+vocabulary, which is underscored and more specific -- `ocean` rather than
+`sea`, `cityscape` rather than `city`. A tag only one side knows is dimmed
+while the other is the only gallery chosen.
 
-waifu.im states the width and height of every picture, so with it the
-hopeless shapes are ruled out before a byte is downloaded. nekos.moe says
-nothing about size, and those pictures are judged after they arrive.
+The nekos.moe column was counted against it before anything got in: it is a
+gallery of characters, so `city` had one picture and `sea` none. Scenery
+therefore comes from the boorus, which have plenty of it.
+
+A booru reads several tags as *all of them at once*, which with a screenful of
+pressed pills would mean no pictures at all. So one of the pressed tags is
+drawn at random for each request, which keeps the promise the window makes:
+any pressed tag is enough. Danbooru allows an anonymous search two terms, and
+the rating is the second one.
+
+The boorus state the width and height of every picture, so the hopeless shapes
+are ruled out before a byte is downloaded. nekos.moe says nothing about size,
+and those pictures are judged after they arrive.
+
+Ratings differ as well. nekos.moe marks a picture safe or not; danbooru rates
+every one of them `g`, `s`, `q` or `e`, and safe means the first; safebooru has
+nothing but safe pictures, so in the NSFW mode it is not asked at all.
 
 `nekowall.service` is a systemd user unit that runs `--set` once, at the first
 login of a system that has no wallpaper yet. After that the choice is yours;
@@ -71,10 +84,16 @@ Xfce, GNOME, KDE Plasma, Hyprland and Niri are set through their own tools
 
 ## What it will not show
 
-nekos.moe marks adult pictures itself, and that flag is the first pass. It is
-a loose one -- pictures it calls safe still arrive tagged `large breasts` or
-`garter straps` -- so a tag list is checked as well. Out of a batch of 60, the
-flag removed 27 and the tags another 11.
+Each gallery marks its own pictures, and that mark is the first pass. It is a
+loose one -- nekos.moe pictures called safe still arrive tagged `large breasts`
+or `garter straps` -- so a tag list is checked as well, against every picture
+from every gallery. Out of a nekos.moe batch of 60, the flag removed 27 and the
+tags another 11. Booru tags are read with underscores turned back into spaces,
+so a booru's spelling cannot slip past the list.
+
+Some tags are refused before any of that, in every mode, with no pill to press
+and no key in the settings file. Child content is not a preference to
+configure.
 
 A wallpaper is on show to everyone who walks past the machine, which is why
 the default is strict rather than clever. It is not a promise: the filter can
@@ -86,7 +105,7 @@ only work with the tags an uploader typed.
 `--set`. Editing it by hand works too:
 
     [General]
-    gallery=nekos.moe   ; nekos.moe, waifu.im, both
+    galleries=nekos.moe, safebooru, danbooru   ; any combination
     mode=safe           ; safe, nsfw, all
     size=auto           ; auto, 1280x720, 1920x1080, 2560x1440, 3840x2160,
                         ; custom, any

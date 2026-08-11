@@ -51,22 +51,11 @@ FiltersTab::FiltersTab(QWidget *parent)
 	layout->setSpacing(6);
 
 	layout->addWidget(sectionLabel(tr("Galleries"), inner));
-	layout->addWidget(row(
-		{
-			{ Filters::Nekos, QStringLiteral("nekos.moe") },
-			{ Filters::Waifu, QStringLiteral("waifu.im") },
-			{ Filters::BothGalleries, tr("both") },
-		},
-		m_filters.where,
-		[this](int value) {
-			m_filters.where = Filters::Where(value);
-			updateTagAvailability();
-			collect();
-		},
-		3));
+	layout->addWidget(galleryPills());
 	layout->addWidget(hintLabel(
-		tr("With both, each gallery is asked once and the pictures are taken from "
-		   "them in turn -- three from each in a normal run."),
+		tr("Any combination. Each chosen gallery is asked once and the pictures "
+		   "are taken from them in turn, so none of them decides the whole run: "
+		   "three from each of two, two from each of three."),
 		inner));
 
 	layout->addWidget(sectionLabel(tr("What to search"), inner));
@@ -195,6 +184,35 @@ QWidget *FiltersTab::row(const QVector<QPair<int, QString>> &choices, int curren
 	return holder;
 }
 
+QWidget *FiltersTab::galleryPills()
+{
+	QWidget *holder = new QWidget(this);
+	QGridLayout *grid = new QGridLayout(holder);
+	grid->setContentsMargins(0, 0, 0, 0);
+	grid->setSpacing(6);
+
+	int index = 0;
+	for (Provider provider : Filters::allGalleries()) {
+		const QString key = Filters::galleryKey(provider);
+		QPushButton *button = pill(key, holder);
+		button->setChecked(m_filters.galleries.contains(key));
+		connect(button, &QPushButton::clicked, this, [this, button, key] {
+			// The last one cannot be turned off: a window with no gallery
+			// to ask has nothing to show.
+			int on = 0;
+			for (QPushButton *other : std::as_const(m_galleries))
+				on += other->isChecked() ? 1 : 0;
+			if (on == 0)
+				button->setChecked(true);
+			updateTagAvailability();
+			collect();
+		});
+		grid->addWidget(button, 0, index++);
+		m_galleries.insert(key, button);
+	}
+	return holder;
+}
+
 QWidget *FiltersTab::wantedGrid()
 {
 	QWidget *holder = new QWidget(this);
@@ -206,11 +224,12 @@ QWidget *FiltersTab::wantedGrid()
 	for (const TagChoice &choice : Filters::tagTable()) {
 		QPushButton *button = pill(choice.label, holder);
 		button->setChecked(m_filters.wanted.contains(choice.label));
-		QString known = choice.nekos.isEmpty() ? QStringLiteral("waifu.im")
-						       : QStringLiteral("nekos.moe");
-		if (!choice.nekos.isEmpty() && !choice.waifu.isEmpty())
-			known = tr("both galleries");
-		button->setToolTip(tr("Known to %1").arg(known));
+		QStringList known;
+		if (!choice.nekos.isEmpty())
+			known << QStringLiteral("nekos.moe");
+		if (!choice.booru.isEmpty())
+			known << QStringLiteral("safebooru, danbooru");
+		button->setToolTip(tr("Known to %1").arg(known.join(QStringLiteral(" + "))));
 		connect(button, &QPushButton::clicked, this, [this] { collect(); });
 		grid->addWidget(button, index / kTagColumns, index % kTagColumns);
 		m_wanted.insert(choice.label, button);
@@ -257,6 +276,14 @@ void FiltersTab::updateTagAvailability()
 
 void FiltersTab::collect()
 {
+	m_filters.galleries.clear();
+	for (Provider provider : Filters::allGalleries()) {
+		const QString key = Filters::galleryKey(provider);
+		QPushButton *button = m_galleries.value(key);
+		if (button && button->isChecked())
+			m_filters.galleries << key;
+	}
+
 	m_filters.wanted.clear();
 	for (const TagChoice &choice : Filters::tagTable()) {
 		QPushButton *button = m_wanted.value(choice.label);
@@ -280,7 +307,7 @@ void FiltersTab::collect()
 								      : tr("everything");
 		m_summary->setText(
 			tr("%1, %2, %3, %4 tags refused.")
-				.arg(Filters::whereKey(m_filters.where), mode,
+				.arg(m_filters.galleries.join(QStringLiteral(" + ")), mode,
 					m_filters.wanted.isEmpty()
 						? tr("any subject")
 						: m_filters.wanted.join(QStringLiteral(", ")))

@@ -72,26 +72,31 @@ Filters::Size Filters::sizeFromKey(const QString &key)
 	return Auto;
 }
 
-QString Filters::whereKey(Where where)
+QString Filters::galleryKey(Provider provider)
 {
-	switch (where) {
-	case Waifu:
-		return QStringLiteral("waifu.im");
-	case BothGalleries:
-		return QStringLiteral("both");
-	case Nekos:
+	switch (provider) {
+	case Provider::Safebooru:
+		return QStringLiteral("safebooru");
+	case Provider::Danbooru:
+		return QStringLiteral("danbooru");
+	case Provider::NekosMoe:
 		break;
 	}
 	return QStringLiteral("nekos.moe");
 }
 
-Filters::Where Filters::whereFromKey(const QString &key)
+Provider Filters::galleryFromKey(const QString &key)
 {
-	if (key == QLatin1String("waifu.im"))
-		return Waifu;
-	if (key == QLatin1String("both"))
-		return BothGalleries;
-	return Nekos;
+	if (key == QLatin1String("safebooru"))
+		return Provider::Safebooru;
+	if (key == QLatin1String("danbooru"))
+		return Provider::Danbooru;
+	return Provider::NekosMoe;
+}
+
+QVector<Provider> Filters::allGalleries()
+{
+	return { Provider::NekosMoe, Provider::Safebooru, Provider::Danbooru };
 }
 
 QSize Filters::target(QSize screen) const
@@ -119,15 +124,16 @@ QSize Filters::target(QSize screen) const
 
 QVector<Provider> Filters::providers() const
 {
-	switch (where) {
-	case Waifu:
-		return { Provider::WaifuIm };
-	case BothGalleries:
-		return { Provider::NekosMoe, Provider::WaifuIm };
-	case Nekos:
-		break;
+	QVector<Provider> chosen;
+	for (Provider provider : allGalleries()) {
+		if (galleries.contains(galleryKey(provider)))
+			chosen << provider;
 	}
-	return { Provider::NekosMoe };
+	// Every gallery turned off is not a wish anybody has; it is a window
+	// that would answer nothing at all.
+	if (chosen.isEmpty())
+		chosen << Provider::NekosMoe;
+	return chosen;
 }
 
 QStringList Filters::tagsFor(Provider provider) const
@@ -136,7 +142,7 @@ QStringList Filters::tagsFor(Provider provider) const
 	for (const TagChoice &choice : tagTable()) {
 		if (!wanted.contains(choice.label))
 			continue;
-		const QString name = provider == Provider::NekosMoe ? choice.nekos : choice.waifu;
+		const QString name = provider == Provider::NekosMoe ? choice.nekos : choice.booru;
 		if (!name.isEmpty())
 			out << name;
 	}
@@ -151,8 +157,9 @@ Filters Filters::load()
 					     modeKey(Safe)).toString());
 	filters.size = sizeFromKey(store.value(QStringLiteral("size"),
 					     sizeKey(Auto)).toString());
-	filters.where = whereFromKey(store.value(QStringLiteral("gallery"),
-					      whereKey(Nekos)).toString());
+	filters.galleries = store.value(QStringLiteral("galleries"),
+					     QStringList { galleryKey(Provider::NekosMoe) })
+				    .toStringList();
 	filters.custom = QSize(store.value(QStringLiteral("customWidth"), 1920).toInt(),
 		store.value(QStringLiteral("customHeight"), 1080).toInt());
 	filters.wanted = store.value(QStringLiteral("wantedTags")).toStringList();
@@ -169,7 +176,7 @@ void Filters::save() const
 	QSettings store = settings();
 	store.setValue(QStringLiteral("mode"), modeKey(mode));
 	store.setValue(QStringLiteral("size"), sizeKey(size));
-	store.setValue(QStringLiteral("gallery"), whereKey(where));
+	store.setValue(QStringLiteral("galleries"), galleries);
 	store.setValue(QStringLiteral("customWidth"), custom.width());
 	store.setValue(QStringLiteral("customHeight"), custom.height());
 	// An empty list would be written as @Invalid(), which is Qt talking to
@@ -183,51 +190,91 @@ void Filters::save() const
 
 QVector<TagChoice> Filters::tagTable()
 {
-	// Counted against both galleries on 11 August 2026. nekos.moe writes
-	// tags in the singular -- "flower" has a gallery's worth, "flowers" has
-	// none -- and it is a gallery of characters rather than places, so no
-	// scenery is offered: "city" had one picture and "sea" none.
+	// What each gallery calls the same thing. nekos.moe writes tags in the
+	// singular and with spaces; the boorus share the Danbooru vocabulary,
+	// which is underscored and often more specific -- "ocean" rather than
+	// "sea", "cityscape" rather than "city".
 	//
-	// waifu.im has twenty tags in total, and its explicit ones are left out
-	// on purpose: the mode above already says whether adult pictures are
-	// wanted, and there is no reason to spell them out on a settings page.
+	// The nekos.moe column was counted against it on 11 August 2026 and only
+	// tags with pictures behind them got in: it is a gallery of characters,
+	// so scenery is left empty there and comes from the boorus instead.
+	// Explicit tags are offered by neither -- the mode above already says
+	// whether adult pictures are wanted.
 	return {
-		{ QStringLiteral("cat ears"), QStringLiteral("cat ears"), {} },
-		{ QStringLiteral("fox ears"), QStringLiteral("fox ears"), {} },
-		{ QStringLiteral("animal ears"), QStringLiteral("animal ears"), {} },
-		{ QStringLiteral("tail"), QStringLiteral("tail"), {} },
-		{ QStringLiteral("cat"), QStringLiteral("cat"), {} },
-		{ QStringLiteral("long hair"), QStringLiteral("long hair"), {} },
-		{ QStringLiteral("short hair"), QStringLiteral("short hair"), {} },
-		{ QStringLiteral("twintails"), QStringLiteral("twintails"), {} },
-		{ QStringLiteral("blue eyes"), QStringLiteral("blue eyes"), {} },
-		{ QStringLiteral("smile"), QStringLiteral("smile"), {} },
-		{ QStringLiteral("sitting"), QStringLiteral("sitting"), {} },
-		{ QStringLiteral("kimono"), QStringLiteral("kimono"), {} },
-		{ QStringLiteral("dress"), QStringLiteral("dress"), {} },
-		{ QStringLiteral("sweater"), QStringLiteral("sweater"), {} },
-		{ QStringLiteral("hoodie"), QStringLiteral("hoodie"), {} },
-		{ QStringLiteral("ribbon"), QStringLiteral("ribbon"), {} },
-		{ QStringLiteral("hat"), QStringLiteral("hat"), {} },
-		{ QStringLiteral("glasses"), QStringLiteral("glasses"), {} },
-		{ QStringLiteral("flower"), QStringLiteral("flower"), {} },
-		{ QStringLiteral("star"), QStringLiteral("star"), {} },
-		{ QStringLiteral("sky"), QStringLiteral("sky"), {} },
-		{ QStringLiteral("food"), QStringLiteral("food"), {} },
-		{ QStringLiteral("one piece"), QStringLiteral("one piece"), {} },
-		// Known to both, in their own words.
+		{ QStringLiteral("cat ears"), QStringLiteral("cat ears"),
+			QStringLiteral("cat_ears") },
+		{ QStringLiteral("fox ears"), QStringLiteral("fox ears"),
+			QStringLiteral("fox_ears") },
+		{ QStringLiteral("animal ears"), QStringLiteral("animal ears"),
+			QStringLiteral("animal_ears") },
+		{ QStringLiteral("tail"), QStringLiteral("tail"),
+			QStringLiteral("tail") },
+		{ QStringLiteral("cat"), QStringLiteral("cat"),
+			QStringLiteral("cat") },
+		{ QStringLiteral("long hair"), QStringLiteral("long hair"),
+			QStringLiteral("long_hair") },
+		{ QStringLiteral("short hair"), QStringLiteral("short hair"),
+			QStringLiteral("short_hair") },
+		{ QStringLiteral("twintails"), QStringLiteral("twintails"),
+			QStringLiteral("twintails") },
+		{ QStringLiteral("blue eyes"), QStringLiteral("blue eyes"),
+			QStringLiteral("blue_eyes") },
+		{ QStringLiteral("smile"), QStringLiteral("smile"),
+			QStringLiteral("smile") },
+		{ QStringLiteral("sitting"), QStringLiteral("sitting"),
+			QStringLiteral("sitting") },
+		{ QStringLiteral("kimono"), QStringLiteral("kimono"),
+			QStringLiteral("kimono") },
 		{ QStringLiteral("uniform"), QStringLiteral("school uniform"),
-			QStringLiteral("uniform") },
-		{ QStringLiteral("maid"), QStringLiteral("maid"), QStringLiteral("maid") },
-		{ QStringLiteral("rem"), QStringLiteral("rem"), QStringLiteral("rem") },
-		// waifu.im only.
-		{ QStringLiteral("any waifu"), {}, QStringLiteral("waifu") },
-		{ QStringLiteral("selfies"), {}, QStringLiteral("selfies") },
-		{ QStringLiteral("genshin impact"), {}, QStringLiteral("genshin-impact") },
-		{ QStringLiteral("raiden shogun"), {}, QStringLiteral("raiden-shogun") },
-		{ QStringLiteral("marin kitagawa"), {}, QStringLiteral("marin-kitagawa") },
-		{ QStringLiteral("mori calliope"), {}, QStringLiteral("mori-calliope") },
-		{ QStringLiteral("kamisato ayaka"), {}, QStringLiteral("kamisato-ayaka") },
+			QStringLiteral("school_uniform") },
+		{ QStringLiteral("maid"), QStringLiteral("maid"),
+			QStringLiteral("maid") },
+		{ QStringLiteral("dress"), QStringLiteral("dress"),
+			QStringLiteral("dress") },
+		{ QStringLiteral("sweater"), QStringLiteral("sweater"),
+			QStringLiteral("sweater") },
+		{ QStringLiteral("hoodie"), QStringLiteral("hoodie"),
+			QStringLiteral("hoodie") },
+		{ QStringLiteral("ribbon"), QStringLiteral("ribbon"),
+			QStringLiteral("ribbon") },
+		{ QStringLiteral("hat"), QStringLiteral("hat"),
+			QStringLiteral("hat") },
+		{ QStringLiteral("glasses"), QStringLiteral("glasses"),
+			QStringLiteral("glasses") },
+		{ QStringLiteral("flower"), QStringLiteral("flower"),
+			QStringLiteral("flower") },
+		{ QStringLiteral("food"), QStringLiteral("food"),
+			QStringLiteral("food") },
+		{ QStringLiteral("sky"), QStringLiteral("sky"),
+			QStringLiteral("sky") },
+		{ QStringLiteral("scenery"), {},
+			QStringLiteral("scenery") },
+		{ QStringLiteral("night"), {},
+			QStringLiteral("night") },
+		{ QStringLiteral("starry sky"), {},
+			QStringLiteral("starry_sky") },
+		{ QStringLiteral("cherry blossoms"), {},
+			QStringLiteral("cherry_blossoms") },
+		{ QStringLiteral("snow"), {},
+			QStringLiteral("snow") },
+		{ QStringLiteral("rain"), {},
+			QStringLiteral("rain") },
+		{ QStringLiteral("ocean"), {},
+			QStringLiteral("ocean") },
+		{ QStringLiteral("forest"), {},
+			QStringLiteral("forest") },
+		{ QStringLiteral("cityscape"), {},
+			QStringLiteral("cityscape") },
+		{ QStringLiteral("one piece"), QStringLiteral("one piece"),
+			QStringLiteral("one_piece") },
+		{ QStringLiteral("rem"), QStringLiteral("rem"),
+			QStringLiteral("rem_(re:zero)") },
+		{ QStringLiteral("genshin impact"), {},
+			QStringLiteral("genshin_impact") },
+		{ QStringLiteral("raiden shogun"), {},
+			QStringLiteral("raiden_shogun") },
+		{ QStringLiteral("marin kitagawa"), {},
+			QStringLiteral("kitagawa_marin") },
 	};
 }
 
@@ -271,10 +318,10 @@ QStringList Filters::alwaysBlockedTags()
 	// settings file says. They are here rather than among the tick boxes
 	// because a tick box is an offer, and this is not on offer.
 	//
-	// waifu.im has no tag of this kind in its twenty -- its vocabulary is
-	// listed in tagTable above -- so nothing of its own needs adding. The
-	// check runs against the tag names of every picture from either
-	// gallery, which is what makes it a floor rather than a list.
+	// The boorus do have tags of this kind, and this is where they are
+	// stopped: every picture from every gallery is measured against this
+	// list before anything else, with underscores read as spaces so that a
+	// booru's spelling cannot slip past. A floor, not a list.
 	return {
 		QStringLiteral("loli"),
 		QStringLiteral("shota"),

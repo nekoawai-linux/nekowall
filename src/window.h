@@ -28,12 +28,14 @@ signals:
 private:
 	QWidget *row(const QVector<QPair<int, QString>> &choices, int current,
 		const std::function<void(int)> &chosen, int columns = 4);
+	QWidget *galleryPills();
 	QWidget *wantedGrid();
 	QWidget *blockedGrid();
 	void updateTagAvailability();
 	void collect();
 
 	Filters m_filters;
+	QHash<QString, QPushButton *> m_galleries;
 	QHash<QString, QPushButton *> m_wanted;
 	QHash<QString, QPushButton *> m_blocked;
 	QSpinBox *m_customWidth = nullptr;

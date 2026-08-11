@@ -5,23 +5,25 @@
 #include <QStringList>
 #include <QVector>
 
-// Where pictures come from. The two galleries have almost nothing in common:
-// nekos.moe has thousands of tags and no dimensions, waifu.im has twenty tags
-// and knows the size of every picture. Everything else in the program is
-// written so that neither of those facts leaks out of this file and source.cpp.
-enum class Provider { NekosMoe, WaifuIm };
+// Where pictures come from. Three galleries with three habits: nekos.moe has
+// its own tag names and says nothing about dimensions; the two boorus share
+// the Danbooru vocabulary, state the size of every picture and rate every one
+// of them. Everything else in the program is written so that none of that
+// leaks out of this file and source.cpp.
+enum class Provider { NekosMoe, Safebooru, Danbooru };
 
-// One box to tick, and what each gallery calls it. An empty name means that
-// gallery does not know the tag -- there is no pretending otherwise, so the
-// box is simply out of reach while that gallery is the only one chosen.
+// One box to tick, and what each gallery calls it. The two boorus share a
+// vocabulary, so one name covers both. An empty name means that gallery does
+// not know the tag -- there is no pretending otherwise, so the box is out of
+// reach while only that gallery is chosen.
 struct TagChoice {
 	QString label;
 	QString nekos;
-	QString waifu;
+	QString booru;
 
 	bool knownTo(Provider provider) const
 	{
-		return provider == Provider::NekosMoe ? !nekos.isEmpty() : !waifu.isEmpty();
+		return provider == Provider::NekosMoe ? !nekos.isEmpty() : !booru.isEmpty();
 	}
 };
 
@@ -39,11 +41,10 @@ struct Filters {
 	// that would rather scale it itself.
 	enum Size { Auto, HD, FullHD, WQHD, UHD, Custom, AsItComes };
 
-	enum Where { Nekos, Waifu, BothGalleries };
-
 	Mode mode = Safe;
 	Size size = Auto;
-	Where where = Nekos;
+	// Any combination, never empty: the pills are a set, not a choice of one.
+	QStringList galleries = { QStringLiteral("nekos.moe") };
 	QSize custom = QSize(1920, 1080);
 	QStringList wanted; // labels from the table below; empty means anything
 	QStringList blocked; // none of these tags, whatever the mode
@@ -62,8 +63,9 @@ struct Filters {
 	static Mode modeFromKey(const QString &key);
 	static QString sizeKey(Size size);
 	static Size sizeFromKey(const QString &key);
-	static QString whereKey(Where where);
-	static Where whereFromKey(const QString &key);
+	static QString galleryKey(Provider provider);
+	static Provider galleryFromKey(const QString &key);
+	static QVector<Provider> allGalleries();
 
 	// The tags offered as boxes to tick, with what each gallery calls them.
 	// Written down rather than fetched: nekos.moe has no endpoint that lists

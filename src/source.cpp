@@ -19,7 +19,18 @@ const char *kNekosRandom = "https://nekos.moe/api/v1/random/image";
 const char *kNekosSearch = "https://nekos.moe/api/v1/images/search";
 const char *kNekosImage = "https://nekos.moe/image/";
 const char *kNekosPage = "https://nekos.moe/post/";
-const char *kWaifuSearch = "https://api.waifu.im/search";
+const char *kSafebooru = "https://safebooru.org/index.php";
+const char *kDanbooru = "https://danbooru.donmai.us/posts.json";
+
+// The boorus write tags with underscores; the block lists are written the way
+// a person says them. One of the two has to give, and it is not the person.
+QStringList spacedTags(const QString &tagString)
+{
+	QStringList out;
+	for (const QString &tag : tagString.split(QLatin1Char(' '), Qt::SkipEmptyParts))
+		out << QString(tag).replace(QLatin1Char('_'), QLatin1Char(' '));
+	return out;
+}
 
 const int kListAttempts = 4;
 
@@ -41,8 +52,7 @@ QNetworkRequest request(const QUrl &url)
 
 QString Artwork::galleryName() const
 {
-	return provider == Provider::NekosMoe ? QStringLiteral("nekos.moe")
-					      : QStringLiteral("waifu.im");
+	return Filters::galleryKey(provider);
 }
 
 Picker::Picker(QSize target, QObject *parent)
@@ -121,9 +131,7 @@ void Picker::fetchList(Provider provider)
 	const int attempt = m_attempts.value(key) + 1;
 	m_attempts[key] = attempt;
 
-	const QString gallery = provider == Provider::NekosMoe
-		? QStringLiteral("nekos.moe")
-		: QStringLiteral("waifu.im");
+	const QString gallery = Filters::galleryKey(provider);
 	emit progress(attempt == 1
 			? tr("Asking %1 for pictures...").arg(gallery)
 			: tr("%1 did not answer. Asking again (%2 of %3)...")
@@ -133,6 +141,14 @@ void Picker::fetchList(Provider provider)
 
 	const QStringList tags = m_filters.tagsFor(provider);
 	QNetworkReply *reply = nullptr;
+
+	// Safebooru has nothing but safe pictures, so in the adult mode it is
+	// not asked at all rather than asked in vain.
+	if (provider == Provider::Safebooru && m_filters.mode == Filters::Adult) {
+		listArrived(provider, {},
+			tr("safebooru has no adult pictures; it was not asked."));
+		return;
+	}
 
 	if (provider == Provider::NekosMoe) {
 		if (tags.isEmpty()) {
@@ -160,33 +176,54 @@ void Picker::fetchList(Provider provider)
 				QJsonDocument(body).toJson(QJsonDocument::Compact));
 		}
 	} else {
-		QUrlQuery query;
-		query.addQueryItem(QStringLiteral("limit"), QString::number(qMin(m_batch, 30)));
-		for (const QString &tag : tags)
-			query.addQueryItem(QStringLiteral("included_tags"), tag);
-		switch (m_filters.mode) {
-		case Filters::Safe:
-			query.addQueryItem(QStringLiteral("is_nsfw"), QStringLiteral("false"));
-			break;
-		case Filters::Adult:
-			query.addQueryItem(QStringLiteral("is_nsfw"), QStringLiteral("true"));
-			break;
-		case Filters::Everything:
-			query.addQueryItem(QStringLiteral("is_nsfw"), QStringLiteral("null"));
-			break;
-		}
-		// waifu.im knows the shape of its pictures, so the hopeless ones
-		// need never be downloaded to be ruled out.
-		if (m_target.isValid()) {
-			query.addQueryItem(QStringLiteral("orientation"),
-				m_target.width() >= m_target.height()
-					? QStringLiteral("LANDSCAPE")
-					: QStringLiteral("PORTRAIT"));
-		}
+		// A booru reads several tags as "all of them at once", which with a
+		// screenful of ticked boxes means no pictures at all. One of them,
+		// drawn at random, keeps the promise the window makes: any ticked
+		// tag is enough. Danbooru also allows an anonymous search only two
+		// terms, and the rating is the second.
+		QString wanted;
+		if (!tags.isEmpty())
+			wanted = tags.at(QRandomGenerator::global()->bounded(tags.size()));
 
-		QUrl url(QString::fromLatin1(kWaifuSearch));
-		url.setQuery(query);
-		reply = m_network->get(request(url));
+		if (provider == Provider::Safebooru) {
+			QString query = wanted;
+			QUrl url(QString::fromLatin1(kSafebooru));
+			QUrlQuery parameters;
+			parameters.addQueryItem(QStringLiteral("page"), QStringLiteral("dapi"));
+			parameters.addQueryItem(QStringLiteral("s"), QStringLiteral("post"));
+			parameters.addQueryItem(QStringLiteral("q"), QStringLiteral("index"));
+			parameters.addQueryItem(QStringLiteral("json"), QStringLiteral("1"));
+			parameters.addQueryItem(QStringLiteral("limit"),
+				QString::number(m_batch));
+			// No random order in this API, so the randomness is which page
+			// of results is asked for.
+			parameters.addQueryItem(QStringLiteral("pid"),
+				QString::number(QRandomGenerator::global()->bounded(40)));
+			if (!query.isEmpty())
+				parameters.addQueryItem(QStringLiteral("tags"), query);
+			url.setQuery(parameters);
+			reply = m_network->get(request(url));
+		} else {
+			QUrlQuery parameters;
+			QString query = wanted;
+			// Danbooru rates every picture: g, s, q, e. Safe means the
+			// first, adult means anything but.
+			if (m_filters.mode == Filters::Safe)
+				query = query.isEmpty() ? QStringLiteral("rating:g")
+							: query + QStringLiteral(" rating:g");
+			else if (m_filters.mode == Filters::Adult)
+				query = query.isEmpty() ? QStringLiteral("-rating:g")
+							: query + QStringLiteral(" -rating:g");
+			parameters.addQueryItem(QStringLiteral("limit"),
+				QString::number(m_batch));
+			parameters.addQueryItem(QStringLiteral("random"),
+				QStringLiteral("true"));
+			if (!query.isEmpty())
+				parameters.addQueryItem(QStringLiteral("tags"), query);
+			QUrl url(QString::fromLatin1(kDanbooru));
+			url.setQuery(parameters);
+			reply = m_network->get(request(url));
+		}
 	}
 
 	connect(reply, &QNetworkReply::finished, this, [this, reply, provider, gallery] {
@@ -215,10 +252,20 @@ void Picker::fetchList(Provider provider)
 		}
 
 		const QByteArray body = reply->readAll();
-		const QVector<Artwork> found = provider == Provider::NekosMoe
-			? parseNekos(body)
-			: parseWaifu(body);
-		if (found.isEmpty() && !body.trimmed().startsWith('{')) {
+		QVector<Artwork> found;
+		switch (provider) {
+		case Provider::NekosMoe:
+			found = parseNekos(body);
+			break;
+		case Provider::Safebooru:
+			found = parseSafebooru(body);
+			break;
+		case Provider::Danbooru:
+			found = parseDanbooru(body);
+			break;
+		}
+		if (found.isEmpty() && !body.trimmed().startsWith('{')
+			&& !body.trimmed().startsWith('[')) {
 			listArrived(provider, {},
 				tr("%1 answered with something that is not a picture list.")
 					.arg(gallery));
@@ -255,35 +302,63 @@ QVector<Artwork> Picker::parseNekos(const QByteArray &json) const
 	return found;
 }
 
-QVector<Artwork> Picker::parseWaifu(const QByteArray &json) const
+QVector<Artwork> Picker::parseSafebooru(const QByteArray &json) const
 {
 	QVector<Artwork> found;
-	const QJsonArray images
-		= QJsonDocument::fromJson(json).object().value(QStringLiteral("images")).toArray();
-	for (const QJsonValue &value : images) {
-		const QJsonObject image = value.toObject();
-		QStringList tags;
-		for (const QJsonValue &tag : image.value(QStringLiteral("tags")).toArray())
-			tags << tag.toObject().value(QStringLiteral("name")).toString();
-		if (!acceptable(tags, image.value(QStringLiteral("is_nsfw")).toBool(true)))
+	for (const QJsonValue &value : QJsonDocument::fromJson(json).array()) {
+		const QJsonObject post = value.toObject();
+		const QStringList tags = spacedTags(post.value(QStringLiteral("tags")).toString());
+		// Safebooru is safe by construction: everything on it is rated
+		// general, so nothing there is adult and nothing is hidden either.
+		if (!acceptable(tags, false))
 			continue;
 
 		Artwork art;
-		art.provider = Provider::WaifuIm;
-		art.id = QString::number(image.value(QStringLiteral("image_id")).toInt());
-		art.artist = image.value(QStringLiteral("artist"))
-				     .toObject()
-				     .value(QStringLiteral("name"))
-				     .toString();
+		art.provider = Provider::Safebooru;
+		art.id = QString::number(post.value(QStringLiteral("id")).toInt());
 		art.tags = tags;
-		art.imageUrl = image.value(QStringLiteral("url")).toString();
-		// The source is where the drawing actually lives -- pixiv, twitter
-		// -- which is a better credit than the gallery's copy of it.
-		art.pageUrl = image.value(QStringLiteral("source")).toString();
+		art.imageUrl = post.value(QStringLiteral("file_url")).toString();
+		art.pageUrl = post.value(QStringLiteral("source")).toString();
 		if (art.pageUrl.isEmpty())
-			art.pageUrl = art.imageUrl;
-		art.size = QSize(image.value(QStringLiteral("width")).toInt(),
-			image.value(QStringLiteral("height")).toInt());
+			art.pageUrl = QStringLiteral("https://safebooru.org/index.php?page=post&s=view&id=")
+				+ art.id;
+		art.size = QSize(post.value(QStringLiteral("width")).toInt(),
+			post.value(QStringLiteral("height")).toInt());
+		// A booru names the artist as one tag among hundreds, and this API
+		// does not say which one it is. The source link is the credit.
+		if (art.isValid())
+			found << art;
+	}
+	return found;
+}
+
+QVector<Artwork> Picker::parseDanbooru(const QByteArray &json) const
+{
+	QVector<Artwork> found;
+	for (const QJsonValue &value : QJsonDocument::fromJson(json).array()) {
+		const QJsonObject post = value.toObject();
+		const QStringList tags
+			= spacedTags(post.value(QStringLiteral("tag_string")).toString());
+		const QString rating = post.value(QStringLiteral("rating")).toString();
+		if (!acceptable(tags, rating != QLatin1String("g")))
+			continue;
+
+		Artwork art;
+		art.provider = Provider::Danbooru;
+		art.id = QString::number(post.value(QStringLiteral("id")).toInt());
+		art.tags = tags;
+		art.imageUrl = post.value(QStringLiteral("file_url")).toString();
+		// Danbooru does name the artist, in a tag of its own.
+		art.artist = post.value(QStringLiteral("tag_string_artist"))
+				     .toString()
+				     .split(QLatin1Char(' '), Qt::SkipEmptyParts)
+				     .value(0)
+				     .replace(QLatin1Char('_'), QLatin1Char(' '));
+		art.pageUrl = post.value(QStringLiteral("source")).toString();
+		if (art.pageUrl.isEmpty())
+			art.pageUrl = QStringLiteral("https://danbooru.donmai.us/posts/") + art.id;
+		art.size = QSize(post.value(QStringLiteral("image_width")).toInt(),
+			post.value(QStringLiteral("image_height")).toInt());
 		if (art.isValid())
 			found << art;
 	}
@@ -322,9 +397,10 @@ void Picker::buildQueue()
 		return;
 	}
 
-	// waifu.im states the size of every picture it has, so the ones that
-	// would be downloaded only to be rejected go last without a byte spent
-	// on them. Pictures of unknown size keep their place in the middle.
+	// The boorus state the size of every picture they have, so the ones
+	// that would be downloaded only to be rejected go last without a byte
+	// spent on them. Pictures of unknown size keep their place in the
+	// middle.
 	if (m_target.isValid()) {
 		std::stable_sort(m_queue.begin(), m_queue.end(),
 			[this](const Artwork &a, const Artwork &b) {
