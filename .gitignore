@@ -1,5 +1,14 @@
-# Release archives, produced by `make dist` and published as release assets
+# Build tree and release archives. `make` puts one in build/, `make dist`
+# puts the other in dist/, and neither belongs in history.
+/build/
+/build-*/
 /dist/
+
+# What the tooling around a CMake project leaves behind
+/CMakeUserPresets.json
+/compile_commands.json
+/.cache/
+*.user
 
 # Assistant tooling
 /.claude/
@@ -16,6 +25,3 @@
 *~
 *.sw?
 .DS_Store
-
-# CMake build tree
-/build/
