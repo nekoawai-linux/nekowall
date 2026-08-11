@@ -76,12 +76,13 @@ bool Picker::acceptable(const QJsonObject &image) const
 		break;
 	}
 
-	// The blocked tags hold in every mode: they are the boxes the user
-	// ticked, not a consequence of the mode.
+	// Two lists. The one the user ticked holds in every mode, and the one
+	// nobody can untick holds before it.
+	const QStringList refused = Filters::alwaysBlockedTags() + m_filters.blocked;
 	const QJsonArray tags = image.value(QStringLiteral("tags")).toArray();
 	for (const QJsonValue &value : tags) {
 		const QString tag = value.toString().toLower();
-		for (const QString &blocked : m_filters.blocked) {
+		for (const QString &blocked : refused) {
 			const QString needle = blocked.trimmed().toLower();
 			if (!needle.isEmpty() && tag.contains(needle))
 				return false;

@@ -45,4 +45,8 @@ struct Filters {
 
 	// Ticked by default. The gallery's own safe flag lets these through.
 	static QStringList defaultBlockedTags();
+
+	// Refused in every mode, with no box to untick and no key in the
+	// settings file. Not a preference to configure.
+	static QStringList alwaysBlockedTags();
 };

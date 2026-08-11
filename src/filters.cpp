@@ -194,7 +194,18 @@ QStringList Filters::defaultBlockedTags()
 		QStringLiteral("see-through"),
 		QStringLiteral("wet clothes"),
 		QStringLiteral("undressing"),
+	};
+}
+
+QStringList Filters::alwaysBlockedTags()
+{
+	// These never reach a screen, whatever the mode says and whatever the
+	// settings file says. They are here rather than among the tick boxes
+	// because a tick box is an offer, and this is not on offer.
+	return {
 		QStringLiteral("loli"),
 		QStringLiteral("shota"),
+		QStringLiteral("toddlercon"),
+		QStringLiteral("child"),
 	};
 }
