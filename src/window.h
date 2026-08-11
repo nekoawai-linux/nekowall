@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QHash>
 #include <QImage>
 #include <QSize>
 #include <QWidget>
@@ -7,14 +8,13 @@
 #include "filters.h"
 #include "source.h"
 
-class QCheckBox;
 class QLabel;
 class QPushButton;
 class QSpinBox;
 
-// Boxes to tick, no tags to type: the gallery has no endpoint that lists its
-// tags, so the offered ones are written down and measured, and everything
-// here is a choice between them.
+// Everything here is a pill to press: galleries, mode, size, tags. Nothing is
+// typed, because neither gallery has an endpoint that would tell us whether a
+// typed tag exists.
 class FiltersTab : public QWidget {
 	Q_OBJECT
 
@@ -26,21 +26,23 @@ signals:
 	void changed(const Filters &filters);
 
 private:
-	QWidget *tagBoxes(const QStringList &tags, const QStringList &ticked,
-		QList<QCheckBox *> *into);
-	QWidget *sizeChoices();
+	QWidget *row(const QVector<QPair<int, QString>> &choices, int current,
+		const std::function<void(int)> &chosen, int columns = 4);
+	QWidget *wantedGrid();
+	QWidget *blockedGrid();
+	void updateTagAvailability();
 	void collect();
 
 	Filters m_filters;
-	QList<QCheckBox *> m_wanted;
-	QList<QCheckBox *> m_blocked;
-	QSpinBox *m_customWidth;
-	QSpinBox *m_customHeight;
-	QLabel *m_summary;
+	QHash<QString, QPushButton *> m_wanted;
+	QHash<QString, QPushButton *> m_blocked;
+	QSpinBox *m_customWidth = nullptr;
+	QSpinBox *m_customHeight = nullptr;
+	QLabel *m_summary = nullptr;
 };
 
-// One picture at a time: what it would look like on the desktop, who drew it,
-// and two buttons.
+// One picture at a time: what the desktop would look like, who drew it, and
+// two buttons.
 class Window : public QWidget {
 	Q_OBJECT
 

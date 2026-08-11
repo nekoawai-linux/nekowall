@@ -272,7 +272,8 @@ QString store(const QImage &canvas, const Artwork &art, bool cropped, QString *e
 	state[QStringLiteral("id")] = art.id;
 	state[QStringLiteral("artist")] = art.artist.isEmpty() ? QStringLiteral("unknown")
 							       : art.artist;
-	state[QStringLiteral("page")] = art.pageUrl();
+	state[QStringLiteral("page")] = art.pageUrl;
+	state[QStringLiteral("gallery")] = art.galleryName();
 	state[QStringLiteral("file")] = path;
 	state[QStringLiteral("screen")] = QStringLiteral("%1x%2")
 						 .arg(canvas.width())

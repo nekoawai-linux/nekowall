@@ -2,13 +2,10 @@
 
 #include "wallpaper.h"
 
-#include <QCheckBox>
 #include <QGridLayout>
-#include <QGroupBox>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QPushButton>
-#include <QRadioButton>
 #include <QResizeEvent>
 #include <QScrollArea>
 #include <QSpinBox>
@@ -19,218 +16,276 @@ namespace {
 
 const int kTagColumns = 4;
 
+QPushButton *pill(const QString &text, QWidget *parent, const char *kind = "true")
+{
+	QPushButton *button = new QPushButton(text, parent);
+	button->setCheckable(true);
+	button->setCursor(Qt::PointingHandCursor);
+	button->setProperty("pill", QString::fromLatin1(kind));
+	return button;
+}
+
+QLabel *sectionLabel(const QString &text, QWidget *parent)
+{
+	QLabel *label = new QLabel(text, parent);
+	label->setObjectName(QStringLiteral("section"));
+	return label;
+}
+
+QLabel *hintLabel(const QString &text, QWidget *parent)
+{
+	QLabel *label = new QLabel(text, parent);
+	label->setObjectName(QStringLiteral("hint"));
+	label->setWordWrap(true);
+	return label;
+}
+
 } // namespace
 
 FiltersTab::FiltersTab(QWidget *parent)
 	: QWidget(parent)
 	, m_filters(Filters::load())
 {
-	QRadioButton *safe = new QRadioButton(tr("Safe"), this);
-	QRadioButton *adult = new QRadioButton(tr("NSFW"), this);
-	QRadioButton *all = new QRadioButton(tr("All"), this);
-	safe->setToolTip(tr("Only pictures the gallery marks as safe."));
-	adult->setToolTip(tr("Only pictures the gallery marks as adult."));
-	all->setToolTip(tr("Both, whatever comes."));
-
-	switch (m_filters.mode) {
-	case Filters::Adult:
-		adult->setChecked(true);
-		break;
-	case Filters::Everything:
-		all->setChecked(true);
-		break;
-	case Filters::Safe:
-		safe->setChecked(true);
-		break;
-	}
-
-	connect(safe, &QRadioButton::toggled, this, [this](bool on) {
-		if (on) {
-			m_filters.mode = Filters::Safe;
-			collect();
-		}
-	});
-	connect(adult, &QRadioButton::toggled, this, [this](bool on) {
-		if (on) {
-			m_filters.mode = Filters::Adult;
-			collect();
-		}
-	});
-	connect(all, &QRadioButton::toggled, this, [this](bool on) {
-		if (on) {
-			m_filters.mode = Filters::Everything;
-			collect();
-		}
-	});
-
-	QHBoxLayout *modes = new QHBoxLayout;
-	modes->addWidget(safe);
-	modes->addWidget(adult);
-	modes->addWidget(all);
-	modes->addStretch();
-
-	QGroupBox *modeBox = new QGroupBox(tr("What to search"), this);
-	QVBoxLayout *modeLayout = new QVBoxLayout(modeBox);
-	modeLayout->addLayout(modes);
-	QLabel *modeHint = new QLabel(
-		tr("The gallery marks its own pictures, and the mark is all this "
-		   "chooses by. The tags below hold in every mode."),
-		modeBox);
-	modeHint->setWordWrap(true);
-	modeLayout->addWidget(modeHint);
-
-	QGroupBox *sizeBox = new QGroupBox(tr("Wallpaper size"), this);
-	QVBoxLayout *sizeLayout = new QVBoxLayout(sizeBox);
-	sizeLayout->addWidget(sizeChoices());
-	QLabel *sizeHint = new QLabel(
-		tr("Auto is what the kernel reports for the largest connected screen. "
-		   "Any means the picture is handed over untouched, for a desktop "
-		   "that would rather scale it itself."),
-		sizeBox);
-	sizeHint->setWordWrap(true);
-	sizeLayout->addWidget(sizeHint);
-
-	QGroupBox *wantedBox = new QGroupBox(tr("Show only pictures tagged"), this);
-	QVBoxLayout *wantedLayout = new QVBoxLayout(wantedBox);
-	QLabel *wantedHint = new QLabel(
-		tr("Any of the ticked tags is enough. Nothing ticked means no "
-		   "preference at all, which is also the fastest."),
-		wantedBox);
-	wantedHint->setWordWrap(true);
-	wantedLayout->addWidget(wantedHint);
-	wantedLayout->addWidget(tagBoxes(Filters::offeredTags(), m_filters.wanted, &m_wanted));
-
-	QGroupBox *blockedBox = new QGroupBox(tr("Never show pictures tagged"), this);
-	QVBoxLayout *blockedLayout = new QVBoxLayout(blockedBox);
-	QLabel *blockedHint = new QLabel(
-		tr("The gallery calls these safe. A wallpaper is on show to "
-		   "everyone who walks past the machine, so they start ticked."),
-		blockedBox);
-	blockedHint->setWordWrap(true);
-	blockedLayout->addWidget(blockedHint);
-	blockedLayout->addWidget(
-		tagBoxes(Filters::defaultBlockedTags(), m_filters.blocked, &m_blocked));
-
-	m_summary = new QLabel(this);
-	m_summary->setWordWrap(true);
-
 	QWidget *inner = new QWidget;
-	QVBoxLayout *innerLayout = new QVBoxLayout(inner);
-	innerLayout->addWidget(modeBox);
-	innerLayout->addWidget(sizeBox);
-	innerLayout->addWidget(wantedBox);
-	innerLayout->addWidget(blockedBox);
-	innerLayout->addWidget(m_summary);
-	innerLayout->addStretch();
+	QVBoxLayout *layout = new QVBoxLayout(inner);
+	layout->setSpacing(6);
+
+	layout->addWidget(sectionLabel(tr("Galleries"), inner));
+	layout->addWidget(row(
+		{
+			{ Filters::Nekos, QStringLiteral("nekos.moe") },
+			{ Filters::Waifu, QStringLiteral("waifu.im") },
+			{ Filters::BothGalleries, tr("both") },
+		},
+		m_filters.where,
+		[this](int value) {
+			m_filters.where = Filters::Where(value);
+			updateTagAvailability();
+			collect();
+		},
+		3));
+	layout->addWidget(hintLabel(
+		tr("With both, each gallery is asked once and the pictures are taken from "
+		   "them in turn -- three from each in a normal run."),
+		inner));
+
+	layout->addWidget(sectionLabel(tr("What to search"), inner));
+	layout->addWidget(row(
+		{
+			{ Filters::Safe, tr("Safe") },
+			{ Filters::Adult, tr("NSFW") },
+			{ Filters::Everything, tr("All") },
+		},
+		m_filters.mode,
+		[this](int value) {
+			m_filters.mode = Filters::Mode(value);
+			collect();
+		},
+		3));
+	layout->addWidget(hintLabel(
+		tr("Each gallery marks its own pictures, and the mark is all this chooses "
+		   "by. The tags below hold in every mode."),
+		inner));
+
+	layout->addWidget(sectionLabel(tr("Wallpaper size"), inner));
+	layout->addWidget(row(
+		{
+			{ Filters::Auto, tr("Auto") },
+			{ Filters::HD, QStringLiteral("HD") },
+			{ Filters::FullHD, QStringLiteral("Full HD") },
+			{ Filters::WQHD, QStringLiteral("2K") },
+			{ Filters::UHD, QStringLiteral("4K") },
+			{ Filters::Custom, tr("Own size") },
+			{ Filters::AsItComes, tr("Any") },
+		},
+		m_filters.size,
+		[this](int value) {
+			m_filters.size = Filters::Size(value);
+			m_customWidth->setEnabled(m_filters.size == Filters::Custom);
+			m_customHeight->setEnabled(m_filters.size == Filters::Custom);
+			collect();
+		},
+		4));
+
+	m_customWidth = new QSpinBox(inner);
+	m_customWidth->setRange(320, 15360);
+	m_customWidth->setSingleStep(10);
+	m_customWidth->setValue(m_filters.custom.width());
+	m_customHeight = new QSpinBox(inner);
+	m_customHeight->setRange(240, 8640);
+	m_customHeight->setSingleStep(10);
+	m_customHeight->setValue(m_filters.custom.height());
+	m_customWidth->setEnabled(m_filters.size == Filters::Custom);
+	m_customHeight->setEnabled(m_filters.size == Filters::Custom);
+	connect(m_customWidth, &QSpinBox::valueChanged, this, [this] { collect(); });
+	connect(m_customHeight, &QSpinBox::valueChanged, this, [this] { collect(); });
+
+	QHBoxLayout *custom = new QHBoxLayout;
+	custom->addWidget(m_customWidth);
+	custom->addWidget(new QLabel(QStringLiteral("x"), inner));
+	custom->addWidget(m_customHeight);
+	custom->addStretch();
+	layout->addLayout(custom);
+	layout->addWidget(hintLabel(
+		tr("Auto is what the kernel reports for the largest connected screen. Any "
+		   "hands the picture over untouched, for a desktop that would rather "
+		   "scale it itself."),
+		inner));
+
+	layout->addWidget(sectionLabel(tr("Show pictures tagged"), inner));
+	layout->addWidget(wantedGrid());
+	layout->addWidget(hintLabel(
+		tr("Any pressed tag is enough, and nothing pressed means no preference. A "
+		   "tag only one gallery knows is dimmed while the other is the only one "
+		   "chosen."),
+		inner));
+
+	layout->addWidget(sectionLabel(tr("Never show pictures tagged"), inner));
+	layout->addWidget(blockedGrid());
+	layout->addWidget(hintLabel(
+		tr("Both galleries call these safe. A wallpaper is on show to everyone who "
+		   "walks past the machine, so they start pressed."),
+		inner));
+
+	m_summary = new QLabel(inner);
+	m_summary->setObjectName(QStringLiteral("status"));
+	m_summary->setWordWrap(true);
+	layout->addSpacing(6);
+	layout->addWidget(m_summary);
+	layout->addStretch();
 
 	QScrollArea *scroll = new QScrollArea(this);
 	scroll->setWidget(inner);
 	scroll->setWidgetResizable(true);
 	scroll->setFrameShape(QFrame::NoFrame);
 
-	QVBoxLayout *layout = new QVBoxLayout(this);
-	layout->addWidget(scroll);
+	QVBoxLayout *outer = new QVBoxLayout(this);
+	outer->setContentsMargins(0, 0, 0, 0);
+	outer->addWidget(scroll);
 
+	updateTagAvailability();
 	collect();
 }
 
-QWidget *FiltersTab::tagBoxes(const QStringList &tags, const QStringList &ticked,
-	QList<QCheckBox *> *into)
+QWidget *FiltersTab::row(const QVector<QPair<int, QString>> &choices, int current,
+	const std::function<void(int)> &chosen, int columns)
 {
 	QWidget *holder = new QWidget(this);
 	QGridLayout *grid = new QGridLayout(holder);
 	grid->setContentsMargins(0, 0, 0, 0);
+	grid->setSpacing(6);
 
-	for (int i = 0; i < tags.size(); ++i) {
-		QCheckBox *box = new QCheckBox(tags.at(i), holder);
-		box->setChecked(ticked.contains(tags.at(i)));
-		connect(box, &QCheckBox::toggled, this, [this] { collect(); });
-		grid->addWidget(box, i / kTagColumns, i % kTagColumns);
-		into->append(box);
+	QVector<QPushButton *> buttons;
+	for (int i = 0; i < choices.size(); ++i) {
+		QPushButton *button = pill(choices.at(i).second, holder);
+		button->setChecked(choices.at(i).first == current);
+		grid->addWidget(button, i / columns, i % columns);
+		buttons << button;
+	}
+	// One of a row stays pressed: pressing another releases the rest.
+	for (int i = 0; i < buttons.size(); ++i) {
+		QPushButton *button = buttons.at(i);
+		const int value = choices.at(i).first;
+		connect(button, &QPushButton::clicked, this, [buttons, button, value, chosen] {
+			for (QPushButton *other : buttons)
+				other->setChecked(other == button);
+			chosen(value);
+		});
 	}
 	return holder;
 }
 
-QWidget *FiltersTab::sizeChoices()
+QWidget *FiltersTab::wantedGrid()
 {
 	QWidget *holder = new QWidget(this);
 	QGridLayout *grid = new QGridLayout(holder);
 	grid->setContentsMargins(0, 0, 0, 0);
+	grid->setSpacing(6);
 
-	const QVector<QPair<Filters::Size, QString>> choices = {
-		{ Filters::Auto, tr("Auto") },
-		{ Filters::HD, tr("HD 1280x720") },
-		{ Filters::FullHD, tr("Full HD 1920x1080") },
-		{ Filters::WQHD, tr("2K 2560x1440") },
-		{ Filters::UHD, tr("4K 3840x2160") },
-		{ Filters::Custom, tr("Own size") },
-		{ Filters::AsItComes, tr("Any, as it comes") },
-	};
-
-	m_customWidth = new QSpinBox(holder);
-	m_customWidth->setRange(320, 15360);
-	m_customWidth->setSingleStep(10);
-	m_customWidth->setValue(m_filters.custom.width());
-	m_customHeight = new QSpinBox(holder);
-	m_customHeight->setRange(240, 8640);
-	m_customHeight->setSingleStep(10);
-	m_customHeight->setValue(m_filters.custom.height());
-
-	for (int i = 0; i < choices.size(); ++i) {
-		QRadioButton *button = new QRadioButton(choices.at(i).second, holder);
-		const Filters::Size size = choices.at(i).first;
-		button->setChecked(m_filters.size == size);
-		connect(button, &QRadioButton::toggled, this, [this, size](bool on) {
-			if (!on)
-				return;
-			m_filters.size = size;
-			m_customWidth->setEnabled(size == Filters::Custom);
-			m_customHeight->setEnabled(size == Filters::Custom);
-			collect();
-		});
-		grid->addWidget(button, i / 4, i % 4);
+	int index = 0;
+	for (const TagChoice &choice : Filters::tagTable()) {
+		QPushButton *button = pill(choice.label, holder);
+		button->setChecked(m_filters.wanted.contains(choice.label));
+		QString known = choice.nekos.isEmpty() ? QStringLiteral("waifu.im")
+						       : QStringLiteral("nekos.moe");
+		if (!choice.nekos.isEmpty() && !choice.waifu.isEmpty())
+			known = tr("both galleries");
+		button->setToolTip(tr("Known to %1").arg(known));
+		connect(button, &QPushButton::clicked, this, [this] { collect(); });
+		grid->addWidget(button, index / kTagColumns, index % kTagColumns);
+		m_wanted.insert(choice.label, button);
+		++index;
 	}
-
-	QHBoxLayout *custom = new QHBoxLayout;
-	custom->addWidget(m_customWidth);
-	custom->addWidget(new QLabel(QStringLiteral("x"), holder));
-	custom->addWidget(m_customHeight);
-	custom->addStretch();
-	grid->addLayout(custom, (choices.size() + 3) / 4, 0, 1, 4);
-
-	m_customWidth->setEnabled(m_filters.size == Filters::Custom);
-	m_customHeight->setEnabled(m_filters.size == Filters::Custom);
-	connect(m_customWidth, &QSpinBox::valueChanged, this, [this] { collect(); });
-	connect(m_customHeight, &QSpinBox::valueChanged, this, [this] { collect(); });
 	return holder;
+}
+
+QWidget *FiltersTab::blockedGrid()
+{
+	QWidget *holder = new QWidget(this);
+	QGridLayout *grid = new QGridLayout(holder);
+	grid->setContentsMargins(0, 0, 0, 0);
+	grid->setSpacing(6);
+
+	const QStringList tags = Filters::defaultBlockedTags();
+	for (int i = 0; i < tags.size(); ++i) {
+		QPushButton *button = pill(tags.at(i), holder, "block");
+		button->setChecked(m_filters.blocked.contains(tags.at(i)));
+		connect(button, &QPushButton::clicked, this, [this] { collect(); });
+		grid->addWidget(button, i / kTagColumns, i % kTagColumns);
+		m_blocked.insert(tags.at(i), button);
+	}
+	return holder;
+}
+
+void FiltersTab::updateTagAvailability()
+{
+	const QVector<Provider> providers = m_filters.providers();
+	for (const TagChoice &choice : Filters::tagTable()) {
+		QPushButton *button = m_wanted.value(choice.label);
+		if (!button)
+			continue;
+		bool known = false;
+		for (Provider provider : providers)
+			known = known || choice.knownTo(provider);
+		button->setEnabled(known);
+		// A tag the chosen gallery cannot answer is not a filter, it is a
+		// silence. Let go of it rather than search with it.
+		if (!known && button->isChecked())
+			button->setChecked(false);
+	}
 }
 
 void FiltersTab::collect()
 {
 	m_filters.wanted.clear();
-	for (QCheckBox *box : std::as_const(m_wanted)) {
-		if (box->isChecked())
-			m_filters.wanted << box->text();
+	for (const TagChoice &choice : Filters::tagTable()) {
+		QPushButton *button = m_wanted.value(choice.label);
+		if (button && button->isEnabled() && button->isChecked())
+			m_filters.wanted << choice.label;
 	}
 	m_filters.blocked.clear();
-	for (QCheckBox *box : std::as_const(m_blocked)) {
-		if (box->isChecked())
-			m_filters.blocked << box->text();
+	for (const QString &tag : Filters::defaultBlockedTags()) {
+		QPushButton *button = m_blocked.value(tag);
+		if (button && button->isChecked())
+			m_filters.blocked << tag;
 	}
-	m_filters.custom = QSize(m_customWidth->value(), m_customHeight->value());
+	if (m_customWidth && m_customHeight)
+		m_filters.custom = QSize(m_customWidth->value(), m_customHeight->value());
 
 	m_filters.save();
 
-	m_summary->setText(tr("Now: %1, %2, %3 tags never shown.")
-				   .arg(m_filters.mode == Filters::Safe ? tr("safe pictures only")
-						   : m_filters.mode == Filters::Adult
-						   ? tr("adult pictures only")
-						   : tr("everything the gallery has"),
-					   m_filters.wanted.isEmpty()
-						   ? tr("any subject")
-						   : tr("%1 tags wanted").arg(m_filters.wanted.size()))
-				   .arg(m_filters.blocked.size()));
-
+	if (m_summary) {
+		const QString mode = m_filters.mode == Filters::Safe ? tr("safe only")
+			: m_filters.mode == Filters::Adult            ? tr("adult only")
+								      : tr("everything");
+		m_summary->setText(
+			tr("%1, %2, %3, %4 tags refused.")
+				.arg(Filters::whereKey(m_filters.where), mode,
+					m_filters.wanted.isEmpty()
+						? tr("any subject")
+						: m_filters.wanted.join(QStringLiteral(", ")))
+				.arg(m_filters.blocked.size()));
+	}
 	emit changed(m_filters);
 }
 
@@ -241,33 +296,37 @@ Window::Window(QWidget *parent)
 	, m_picker(new Picker(m_screen, this))
 {
 	setWindowTitle(tr("nekowall"));
-	resize(960, 720);
+	resize(980, 760);
 
 	m_preview = new QLabel(this);
+	m_preview->setObjectName(QStringLiteral("preview"));
 	m_preview->setAlignment(Qt::AlignCenter);
-	m_preview->setMinimumSize(480, 270);
-	m_preview->setStyleSheet(QStringLiteral("background: #17141c; border-radius: 6px;"));
+	m_preview->setMinimumSize(520, 300);
 
 	m_credit = new QLabel(this);
+	m_credit->setObjectName(QStringLiteral("credit"));
 	m_credit->setTextFormat(Qt::RichText);
 	m_credit->setOpenExternalLinks(true);
 	m_credit->setWordWrap(true);
 
 	m_status = new QLabel(this);
+	m_status->setObjectName(QStringLiteral("status"));
 	m_status->setWordWrap(true);
 
 	m_another = new QPushButton(tr("Another one"), this);
 	m_apply = new QPushButton(tr("Use as wallpaper"), this);
+	m_apply->setObjectName(QStringLiteral("primary"));
 	m_apply->setDefault(true);
 	QPushButton *close = new QPushButton(tr("Close"), this);
+	for (QPushButton *button : { m_another, m_apply, close })
+		button->setCursor(Qt::PointingHandCursor);
 
 	connect(m_another, &QPushButton::clicked, this, &Window::shuffle);
 	connect(m_apply, &QPushButton::clicked, this, &Window::applyCurrent);
 	connect(close, &QPushButton::clicked, this, &Window::close);
 
-	connect(m_picker, &Picker::progress, this, [this](const QString &what) {
-		m_status->setText(what);
-	});
+	connect(m_picker, &Picker::progress, this,
+		[this](const QString &what) { m_status->setText(what); });
 	connect(m_picker, &Picker::picked, this, &Window::showCandidate);
 	connect(m_picker, &Picker::failed, this, [this](const QString &reason) {
 		setBusy(false);
@@ -282,6 +341,7 @@ Window::Window(QWidget *parent)
 
 	QWidget *picture = new QWidget(this);
 	QVBoxLayout *pictureLayout = new QVBoxLayout(picture);
+	pictureLayout->setSpacing(10);
 	pictureLayout->addWidget(m_preview, 1);
 	pictureLayout->addWidget(m_credit);
 	pictureLayout->addWidget(m_status);
@@ -307,6 +367,7 @@ Window::Window(QWidget *parent)
 	tabs->addTab(m_filters, tr("Filters"));
 
 	QVBoxLayout *layout = new QVBoxLayout(this);
+	layout->setContentsMargins(14, 10, 14, 14);
 	layout->addWidget(tabs);
 
 	shuffle();
@@ -321,7 +382,7 @@ void Window::setBusy(bool busy)
 void Window::shuffle()
 {
 	setBusy(true);
-	m_status->setText(tr("Asking nekos.moe for pictures..."));
+	m_status->setText(tr("Looking for a picture..."));
 	m_picker->start();
 }
 
@@ -331,9 +392,10 @@ void Window::showCandidate(const QImage &art, const Artwork &meta)
 	m_meta = meta;
 	render();
 
-	const QString artist = meta.artist.isEmpty() ? tr("unknown artist") : meta.artist;
-	m_credit->setText(tr("Drawn by <b>%1</b> &mdash; <a href=\"%2\">%2</a>")
-				  .arg(artist.toHtmlEscaped(), meta.pageUrl()));
+	const QString artist = meta.artist.isEmpty() ? tr("an artist who is not named")
+						     : meta.artist.toHtmlEscaped();
+	m_credit->setText(tr("Drawn by <b>%1</b> &mdash; <a href=\"%2\">%3</a>")
+				  .arg(artist, meta.pageUrl, meta.galleryName()));
 	setBusy(false);
 }
 
@@ -350,14 +412,13 @@ void Window::render()
 					  .arg(m_art.height()));
 	} else {
 		m_canvas = wallpaper::compose(m_art, m_target, &m_cropped);
-		m_status->setText(m_cropped
-				? tr("%1x%2, the picture covers it.")
-					  .arg(m_target.width())
-					  .arg(m_target.height())
-				: tr("%1x%2, the picture is whole on a blurred backdrop of "
-				     "itself.")
-					  .arg(m_target.width())
-					  .arg(m_target.height()));
+		m_status->setText(m_cropped ? tr("%1x%2, the picture covers it.")
+							.arg(m_target.width())
+							.arg(m_target.height())
+					    : tr("%1x%2, the picture is whole on a blurred "
+						 "backdrop of itself.")
+							.arg(m_target.width())
+							.arg(m_target.height()));
 	}
 	updatePreview();
 	setBusy(false);
@@ -367,8 +428,8 @@ void Window::updatePreview()
 {
 	if (m_canvas.isNull())
 		return;
-	m_preview->setPixmap(QPixmap::fromImage(m_canvas).scaled(m_preview->size(),
-		Qt::KeepAspectRatio, Qt::SmoothTransformation));
+	m_preview->setPixmap(QPixmap::fromImage(m_canvas).scaled(
+		m_preview->size() - QSize(12, 12), Qt::KeepAspectRatio, Qt::SmoothTransformation));
 }
 
 void Window::resizeEvent(QResizeEvent *event)

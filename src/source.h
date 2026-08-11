@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QHash>
 #include <QImage>
 #include <QObject>
 #include <QSize>
@@ -12,21 +13,24 @@
 class QJsonObject;
 class QNetworkAccessManager;
 
-// One picture, the way nekos.moe describes it. The catalogue carries no
-// dimensions, so how well a picture suits the screen is only known once the
-// file itself is here.
+// One picture, as a gallery describes it. nekos.moe says nothing about
+// dimensions, waifu.im says everything -- so `size` is filled in when it is
+// known and left invalid when it is not.
 struct Artwork {
+	Provider provider = Provider::NekosMoe;
 	QString id;
 	QString artist;
 	QStringList tags;
+	QString imageUrl;
+	QString pageUrl;
+	QSize size;
 
-	bool isValid() const { return !id.isEmpty(); }
-	QString pageUrl() const;
-	QString imageUrl() const;
+	bool isValid() const { return !imageUrl.isEmpty(); }
+	QString galleryName() const;
 };
 
-// Asks for a batch of pictures, then downloads them one by one and keeps the
-// first that fits the screen without losing much of the drawing.
+// Asks the chosen galleries for pictures, then downloads them one by one and
+// keeps the first that fits the wallpaper without losing much of the drawing.
 // Asynchronous throughout: the window stays alive while the network takes its
 // time, and the headless path waits for the same signal.
 class Picker : public QObject {
@@ -35,9 +39,9 @@ class Picker : public QObject {
 public:
 	explicit Picker(QSize target, QObject *parent = nullptr);
 
-	// How much of a picture a crop to the screen shape throws away, from 0
+	// How much of a picture a crop to the target shape throws away, from 0
 	// (same shape) to 1. The measure is the shape alone; scaling is free.
-	static double cropLoss(QSize art, QSize screen);
+	static double cropLoss(QSize art, QSize target);
 
 	// Re-read before every run, so a box ticked in the window takes effect
 	// on the next picture rather than on the next launch.
@@ -56,19 +60,27 @@ signals:
 	void failed(const QString &reason);
 
 private:
-	void fetchCandidates();
-	void handleCandidates(const QByteArray &json);
+	void fetchList(Provider provider);
+	void listArrived(Provider provider, const QVector<Artwork> &found, const QString &error);
+	void buildQueue();
 	void tryNext();
 	void finishWithBest();
-	bool acceptable(const QJsonObject &image) const;
+	bool acceptable(const QStringList &tags, bool adult) const;
+
+	QVector<Artwork> parseNekos(const QByteArray &json) const;
+	QVector<Artwork> parseWaifu(const QByteArray &json) const;
 
 	QNetworkAccessManager *m_network;
 	QSize m_target;
 	Filters m_filters;
+
+	QHash<int, QVector<Artwork>> m_lists; // by provider, before interleaving
+	QHash<int, int> m_attempts;
+	QStringList m_errors;
+	int m_outstanding = 0;
+
 	QVector<Artwork> m_queue;
 	int m_downloaded = 0;
-	int m_attempts = 0;
-	int m_skip = 0;
 
 	QImage m_best;
 	Artwork m_bestMeta;

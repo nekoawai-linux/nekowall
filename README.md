@@ -2,7 +2,7 @@
 
 # nekowall
 
-**Random art from [nekos.moe](https://nekos.moe) on the desktop, drawn to the size of the screen the machine is actually running.**
+**Random art from [nekos.moe](https://nekos.moe) and [waifu.im](https://waifu.im) on the desktop, drawn to the size of the screen the machine is actually running.**
 
 </div>
 
@@ -34,8 +34,11 @@ drew what is on screen and links to its page.
 The **Wallpaper** tab shows what the desktop would look like, who drew it and
 where the picture lives, with "another one" and "use as wallpaper".
 
-The **Filters** tab is boxes to tick, nothing to type:
+The **Filters** tab is pills to press, nothing to type:
 
+- **Galleries** -- nekos.moe, waifu.im, or both. With both, each is asked once
+  and the pictures are taken from them in turn: three from each in a normal
+  run, so neither decides the whole thing.
 - **What to search** -- Safe, NSFW, or All. The gallery marks its own
   pictures and that mark is all this chooses by.
 - **Wallpaper size** -- Auto, HD, Full HD, 2K, 4K, a size of your own, or
@@ -46,10 +49,17 @@ The **Filters** tab is boxes to tick, nothing to type:
   to search.
 - **Never show pictures tagged** -- holds in every mode.
 
-The offered tags are the ones that exist. They were counted against the
-gallery: it writes tags in the singular (`flower` has plenty, `flowers` has
-none), and it is a gallery of characters rather than places -- `city` had one
-picture, `sea` none -- so scenery is not offered at all.
+The offered tags are the ones that exist, counted against both galleries
+before they got in. nekos.moe writes tags in the singular (`flower` has
+plenty, `flowers` has none) and is a gallery of characters rather than places
+-- `city` had one picture, `sea` none -- so no scenery is offered. waifu.im
+has twenty tags in total, of which `maid`, `uniform` and `rem` are also
+nekos.moe's; the rest of its own are its characters. A tag only one gallery
+knows is dimmed while the other is the only one chosen.
+
+waifu.im states the width and height of every picture, so with it the
+hopeless shapes are ruled out before a byte is downloaded. nekos.moe says
+nothing about size, and those pictures are judged after they arrive.
 
 `nekowall.service` is a systemd user unit that runs `--set` once, at the first
 login of a system that has no wallpaper yet. After that the choice is yours;
@@ -76,6 +86,7 @@ only work with the tags an uploader typed.
 `--set`. Editing it by hand works too:
 
     [General]
+    gallery=nekos.moe   ; nekos.moe, waifu.im, both
     mode=safe           ; safe, nsfw, all
     size=auto           ; auto, 1280x720, 1920x1080, 2560x1440, 3840x2160,
                         ; custom, any
@@ -93,7 +104,9 @@ only work with the tags an uploader typed.
 
 Qt 6 (Core, Gui, Widgets, Network) is the only dependency: network, JSON and
 image work all come from it, so there is no curl, no jq and no ImageMagick to
-install.
+install. The window draws its own dark theme rather than borrowing the
+desktop's widget style -- nekowall runs on five desktops, and a picker that
+looks like a control panel on one and a form on another belongs to none.
 
     make check     configure, build, --version
     make dist      reproducible release archive

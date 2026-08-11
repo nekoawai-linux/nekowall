@@ -1,5 +1,6 @@
 #include "filters.h"
 #include "source.h"
+#include "theme.h"
 #include "wallpaper.h"
 #include "window.h"
 
@@ -68,7 +69,8 @@ int setOnce(int argc, char *argv[])
 				    << (meta.artist.isEmpty() ? QStringLiteral("unknown")
 							      : meta.artist)
 				    << '\n'
-				    << "picture:   " << meta.pageUrl() << '\n';
+				    << "picture:   " << meta.pageUrl << '\n'
+				    << "gallery:   " << meta.galleryName() << '\n';
 			}
 			app.quit();
 		});
@@ -118,6 +120,7 @@ int main(int argc, char *argv[])
 
 	QApplication app(argc, argv);
 	QCoreApplication::setApplicationName(QStringLiteral("nekowall"));
+	app.setStyleSheet(nekowallStyleSheet());
 	Window window;
 	window.show();
 	return app.exec();
