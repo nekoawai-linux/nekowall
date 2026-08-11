@@ -1,3 +1,4 @@
+#include "filters.h"
 #include "source.h"
 #include "wallpaper.h"
 #include "window.h"
@@ -20,8 +21,11 @@ void usage(QTextStream &out)
 	    << "  --current      who drew the wallpaper that is set now\n"
 	    << "  --version\n"
 	    << "  --help\n\n"
-	    << "Settings live in ~/.config/nekowall/nekowall.conf: allowNsfw,\n"
-	    << "blockedTags, batch, tries.\n";
+	    << "The window has two tabs: the picture, and filters -- what to\n"
+	    << "search (safe, nsfw, all), the size of the wallpaper, and the\n"
+	    << "tags to want or never to see, as boxes to tick.\n\n"
+	    << "Those choices are kept in ~/.config/nekowall/nekowall.ini and\n"
+	    << "are what --set follows.\n";
 }
 
 // The headless path: one picture, applied, then out. This is what the user
@@ -35,13 +39,20 @@ int setOnce(int argc, char *argv[])
 	QTextStream err(stderr);
 	int status = 0;
 
+	const Filters filters = Filters::load();
 	const QSize screen = wallpaper::screenSize();
-	Picker picker(screen);
+	// An invalid target is the "any size" setting: the picture is applied
+	// as it was downloaded.
+	const QSize target = filters.target(screen);
+	Picker picker(target);
+	picker.setFilters(filters);
 
 	QObject::connect(&picker, &Picker::picked, &app,
 		[&](const QImage &art, const Artwork &meta) {
-			bool cropped = false;
-			const QImage canvas = wallpaper::compose(art, screen, &cropped);
+			bool cropped = true;
+			const QImage canvas = target.isValid()
+				? wallpaper::compose(art, target, &cropped)
+				: art;
 
 			QString error;
 			const QString path = wallpaper::store(canvas, meta, cropped, &error);

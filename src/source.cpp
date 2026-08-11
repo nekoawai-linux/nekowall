@@ -6,27 +6,19 @@
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
 #include <QNetworkRequest>
+#include <QRandomGenerator>
 #include <QSettings>
 #include <QTimer>
 #include <QUrl>
 
 namespace {
 
-const char *kApi = "https://nekos.moe/api/v1/random/image";
+const char *kRandom = "https://nekos.moe/api/v1/random/image";
+const char *kSearch = "https://nekos.moe/api/v1/images/search";
 const char *kImage = "https://nekos.moe/image/";
 const char *kPage = "https://nekos.moe/post/";
 
-// A wallpaper is on show to everyone who walks past the machine, so the
-// filter starts strict. The nsfw flag of the gallery is the first pass and it
-// is a loose one: pictures it calls safe still arrive tagged "large breasts"
-// and "garter straps". These tags are matched as substrings, so "breasts"
-// covers every size of it. Measured on a batch of 60: the flag removed 27,
-// the tags another 11, and 22 came through -- enough for one screen.
-// nekowall.conf replaces the whole list for anyone who wants it looser.
-const char *kBlockedTags =
-	"cleavage,breasts,sideboob,underboob,bikini,swimsuit,lingerie,underwear,"
-	"panties,pantsu,bra,garter,nude,naked,nipples,areola,topless,ecchi,"
-	"erotic,suggestive,bondage,see-through,wet clothes,undressing,loli,shota";
+const int kListAttempts = 4;
 
 QNetworkRequest request(const QUrl &url)
 {
@@ -42,29 +34,21 @@ QNetworkRequest request(const QUrl &url)
 	return r;
 }
 
-const int kListAttempts = 4;
-
 } // namespace
 
 QString Artwork::pageUrl() const { return QString::fromLatin1(kPage) + id; }
 QString Artwork::imageUrl() const { return QString::fromLatin1(kImage) + id; }
 
-Picker::Picker(QSize screen, QObject *parent)
+Picker::Picker(QSize target, QObject *parent)
 	: QObject(parent)
 	, m_network(new QNetworkAccessManager(this))
-	, m_screen(screen)
+	, m_target(target)
+	, m_filters(Filters::load())
 {
 	QSettings settings(QSettings::IniFormat, QSettings::UserScope,
 		QStringLiteral("nekowall"), QStringLiteral("nekowall"));
-	m_allowNsfw = settings.value(QStringLiteral("allowNsfw"), false).toBool();
-	m_blockedTags = settings
-				.value(QStringLiteral("blockedTags"), QString::fromLatin1(kBlockedTags))
-				.toString()
-				.split(QLatin1Char(','), Qt::SkipEmptyParts);
 	m_batch = settings.value(QStringLiteral("batch"), m_batch).toInt();
 	m_tries = settings.value(QStringLiteral("tries"), m_tries).toInt();
-	for (QString &tag : m_blockedTags)
-		tag = tag.trimmed().toLower();
 }
 
 double Picker::cropLoss(QSize art, QSize screen)
@@ -78,14 +62,28 @@ double Picker::cropLoss(QSize art, QSize screen)
 
 bool Picker::acceptable(const QJsonObject &image) const
 {
-	if (!m_allowNsfw && image.value(QStringLiteral("nsfw")).toBool(true))
-		return false;
+	const bool adult = image.value(QStringLiteral("nsfw")).toBool(true);
+	switch (m_filters.mode) {
+	case Filters::Safe:
+		if (adult)
+			return false;
+		break;
+	case Filters::Adult:
+		if (!adult)
+			return false;
+		break;
+	case Filters::Everything:
+		break;
+	}
 
+	// The blocked tags hold in every mode: they are the boxes the user
+	// ticked, not a consequence of the mode.
 	const QJsonArray tags = image.value(QStringLiteral("tags")).toArray();
 	for (const QJsonValue &value : tags) {
 		const QString tag = value.toString().toLower();
-		for (const QString &blocked : m_blockedTags) {
-			if (!blocked.isEmpty() && tag.contains(blocked))
+		for (const QString &blocked : m_filters.blocked) {
+			const QString needle = blocked.trimmed().toLower();
+			if (!needle.isEmpty() && tag.contains(needle))
 				return false;
 		}
 	}
@@ -100,6 +98,9 @@ void Picker::start()
 	m_best = QImage();
 	m_bestMeta = Artwork();
 	m_bestLoss = 2.0;
+	// Search answers from the front of the list every time, so without a
+	// random start the same pictures come back for ever.
+	m_skip = QRandomGenerator::global()->bounded(80);
 	fetchCandidates();
 }
 
@@ -112,13 +113,33 @@ void Picker::fetchCandidates()
 				  .arg(m_attempts)
 				  .arg(kListAttempts));
 
-	// The nsfw=false parameter of this endpoint never answers, so the safe
-	// pictures are picked out here instead -- which is the more trustworthy
-	// place for it anyway.
-	QUrl url(QString::fromLatin1(kApi));
-	url.setQuery(QStringLiteral("count=%1").arg(m_batch));
+	QNetworkReply *reply = nullptr;
+	if (m_filters.wanted.isEmpty()) {
+		// Nothing in particular is wanted, so take whatever comes. The
+		// nsfw parameter of this endpoint never answers, which is why the
+		// mode is applied to the records instead.
+		QUrl url(QString::fromLatin1(kRandom));
+		url.setQuery(QStringLiteral("count=%1").arg(m_batch));
+		reply = m_network->get(request(url));
+	} else {
+		// Tags were ticked, and search takes them -- any of them, not all,
+		// so a screenful of boxes widens the choice instead of narrowing
+		// it to nothing. Here the mode does travel with the request.
+		QJsonObject body;
+		body[QStringLiteral("tags")] = QJsonArray::fromStringList(m_filters.wanted);
+		body[QStringLiteral("limit")] = m_batch;
+		body[QStringLiteral("skip")] = m_skip;
+		if (m_filters.mode == Filters::Safe)
+			body[QStringLiteral("nsfw")] = false;
+		else if (m_filters.mode == Filters::Adult)
+			body[QStringLiteral("nsfw")] = true;
 
-	QNetworkReply *reply = m_network->get(request(url));
+		QNetworkRequest post = request(QUrl(QString::fromLatin1(kSearch)));
+		post.setHeader(QNetworkRequest::ContentTypeHeader,
+			QStringLiteral("application/json"));
+		reply = m_network->post(post, QJsonDocument(body).toJson(QJsonDocument::Compact));
+	}
+
 	connect(reply, &QNetworkReply::finished, this, [this, reply] {
 		reply->deleteLater();
 		if (reply->error() != QNetworkReply::NoError) {
@@ -132,28 +153,47 @@ void Picker::fetchCandidates()
 			emit failed(tr("nekos.moe is not answering: %1").arg(reply->errorString()));
 			return;
 		}
-
-		const QJsonObject root = QJsonDocument::fromJson(reply->readAll()).object();
-		const QJsonArray images = root.value(QStringLiteral("images")).toArray();
-		for (const QJsonValue &value : images) {
-			const QJsonObject image = value.toObject();
-			if (!acceptable(image))
-				continue;
-			Artwork art;
-			art.id = image.value(QStringLiteral("id")).toString();
-			art.artist = image.value(QStringLiteral("artist")).toString();
-			for (const QJsonValue &tag : image.value(QStringLiteral("tags")).toArray())
-				art.tags << tag.toString();
-			if (art.isValid())
-				m_queue << art;
-		}
-
-		if (m_queue.isEmpty()) {
-			emit failed(tr("Nothing in this batch passed the filter. Try again."));
-			return;
-		}
-		tryNext();
+		handleCandidates(reply->readAll());
 	});
+}
+
+void Picker::handleCandidates(const QByteArray &json)
+{
+	const QJsonObject root = QJsonDocument::fromJson(json).object();
+	const QJsonArray images = root.value(QStringLiteral("images")).toArray();
+	for (const QJsonValue &value : images) {
+		const QJsonObject image = value.toObject();
+		if (!acceptable(image))
+			continue;
+		Artwork art;
+		art.id = image.value(QStringLiteral("id")).toString();
+		art.artist = image.value(QStringLiteral("artist")).toString();
+		for (const QJsonValue &tag : image.value(QStringLiteral("tags")).toArray())
+			art.tags << tag.toString();
+		if (art.isValid())
+			m_queue << art;
+	}
+
+	if (!m_queue.isEmpty()) {
+		tryNext();
+		return;
+	}
+
+	// A random start past the end of a small tag is an empty answer rather
+	// than an error: begin again from the front before giving up.
+	if (m_skip > 0 && m_attempts < kListAttempts) {
+		m_skip = 0;
+		fetchCandidates();
+		return;
+	}
+	if (m_attempts < kListAttempts && m_filters.wanted.isEmpty()) {
+		fetchCandidates();
+		return;
+	}
+	emit failed(m_filters.wanted.isEmpty()
+			? tr("Nothing in this batch passed the filters.")
+			: tr("Nothing matches these tags in this mode. Tick fewer tags, or "
+			     "change the mode."));
 }
 
 void Picker::tryNext()
@@ -181,8 +221,14 @@ void Picker::tryNext()
 			return;
 		}
 
-		const double loss = cropLoss(image.size(), m_screen);
-		const bool bigEnough = image.width() >= m_screen.width() * 3 / 4;
+		// Without a canvas to fill there is nothing to be picky about.
+		if (!m_target.isValid()) {
+			emit picked(image, art);
+			return;
+		}
+
+		const double loss = cropLoss(image.size(), m_target);
+		const bool bigEnough = image.width() >= m_target.width() * 3 / 4;
 
 		// A picture of nearly the screen's shape covers it whole, and that
 		// beats anything a backdrop can do -- take the first one and stop.

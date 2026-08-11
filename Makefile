@@ -4,7 +4,7 @@ BUILDDIR ?= build
 DISTDIR ?= dist
 SOURCE_DATE_EPOCH ?= 1786320000
 
-VERSION := 0.1.0
+VERSION := 0.2.0
 ARCHIVE := $(DISTDIR)/nekowall-$(VERSION).tar.gz
 SOURCES := CMakeLists.txt LICENSE Makefile README.md data src
 

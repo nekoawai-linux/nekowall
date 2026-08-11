@@ -26,10 +26,30 @@ drew what is on screen and links to its page.
 
 ## Running it
 
-    nekowall              a window: preview, "another one", "use as wallpaper"
+    nekowall              a window: the picture, and a tab of filters
     nekowall --set        take one and apply it, no window
     nekowall --current    who drew the wallpaper that is set now
     nekowall --version
+
+The **Wallpaper** tab shows what the desktop would look like, who drew it and
+where the picture lives, with "another one" and "use as wallpaper".
+
+The **Filters** tab is boxes to tick, nothing to type:
+
+- **What to search** -- Safe, NSFW, or All. The gallery marks its own
+  pictures and that mark is all this chooses by.
+- **Wallpaper size** -- Auto, HD, Full HD, 2K, 4K, a size of your own, or
+  "any, as it comes", which hands the picture over untouched. Changing it
+  redraws the picture that is already on screen; no new download.
+- **Show only pictures tagged** -- any ticked tag is enough, and nothing
+  ticked means no preference. Ticking tags switches from the random endpoint
+  to search.
+- **Never show pictures tagged** -- holds in every mode.
+
+The offered tags are the ones that exist. They were counted against the
+gallery: it writes tags in the singular (`flower` has plenty, `flowers` has
+none), and it is a gallery of characters rather than places -- `city` had one
+picture, `sea` none -- so scenery is not offered at all.
 
 `nekowall.service` is a systemd user unit that runs `--set` once, at the first
 login of a system that has no wallpaper yet. After that the choice is yours;
@@ -52,10 +72,16 @@ only work with the tags an uploader typed.
 
 ## Settings
 
-`~/.config/nekowall/nekowall.conf`, all optional:
+`~/.config/nekowall/nekowall.ini` -- written by the Filters tab, and read by
+`--set`. Editing it by hand works too:
 
     [General]
-    allowNsfw=false     ; the gallery's own flag
+    mode=safe           ; safe, nsfw, all
+    size=auto           ; auto, 1280x720, 1920x1080, 2560x1440, 3840x2160,
+                        ; custom, any
+    customWidth=1920
+    customHeight=1080
+    wantedTags=cat ears, kimono
     blockedTags=...     ; comma separated, matched inside tag names
     batch=20            ; pictures asked for at once
     tries=6             ; pictures downloaded before settling for the best so far

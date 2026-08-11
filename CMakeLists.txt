@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.22)
 
-project(nekowall VERSION 0.1.0 LANGUAGES CXX)
+project(nekowall VERSION 0.2.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -14,6 +14,7 @@ find_package(Qt6 6.4 REQUIRED COMPONENTS Core Gui Widgets Network)
 
 add_executable(nekowall
 	src/main.cpp
+	src/filters.cpp
 	src/source.cpp
 	src/wallpaper.cpp
 	src/window.cpp
