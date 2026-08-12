@@ -2,14 +2,18 @@
 
 # nekowall
 
-**A wallpaper that changes with you.**
-
-Random art from three galleries, drawn to the exact size of the screen the machine is running.
+=^..^=
 
 ![License](https://img.shields.io/badge/License-GPL--3.0--or--later-green?style=for-the-badge)
 ![Qt](https://img.shields.io/badge/Qt-6-41cd52?style=for-the-badge&logo=qt&logoColor=white)
 ![Desktops](https://img.shields.io/badge/Desktops-Xfce_·_GNOME_·_Plasma_·_Hyprland_·_Niri-9b7fd4?style=for-the-badge)
 [![Website](https://img.shields.io/badge/Website-nekoawai.moe-%23e32b6b?style=for-the-badge)](https://nekoawai.moe)
+
+**A wallpaper that changes with you.**
+
+Random art from three galleries, drawn to the exact size of the screen the
+machine is running. Written for [NekoAwai](https://github.com/nekoawai-linux/nekoawai-linux),
+at home on any desktop that will take a picture.
 
 </div>
 
