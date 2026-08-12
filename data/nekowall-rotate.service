@@ -1,0 +1,11 @@
+[Unit]
+Description=Take another nekowall wallpaper
+Documentation=https://nekoawai.moe
+After=graphical-session.target
+PartOf=graphical-session.target
+
+[Service]
+Type=oneshot
+# No --at-login here: the timer is the answer to that question already, and
+# it only runs when the window was asked for one.
+ExecStart=/usr/bin/nekowall --set

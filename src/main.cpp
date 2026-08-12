@@ -1,3 +1,4 @@
+#include "autostart.h"
 #include "filters.h"
 #include "source.h"
 #include "theme.h"
@@ -14,17 +15,22 @@ namespace {
 
 void usage(QTextStream &out)
 {
-	out << "Usage: nekowall [--set|--current|--version|--help]\n\n"
+	out << "Usage: nekowall [--set [--at-login]|--current|--version|--help]\n\n"
 	    << "Random art from nekos.moe as the desktop wallpaper, drawn to the\n"
 	    << "resolution the machine is running.\n\n"
 	    << "  (no argument)  open the window and pick a picture by hand\n"
 	    << "  --set          take one and apply it, without a window\n"
+	    << "  --at-login     with --set: obey the autostart setting, which\n"
+	    << "                 may well be to leave the wallpaper alone. This\n"
+	    << "                 is what the systemd user unit runs.\n"
 	    << "  --current      who drew the wallpaper that is set now\n"
 	    << "  --version\n"
 	    << "  --help\n\n"
-	    << "The window has two tabs: the picture, and filters -- what to\n"
+	    << "The window has three tabs: the picture, the filters -- what to\n"
 	    << "search (safe, nsfw, all), the size of the wallpaper, and the\n"
-	    << "tags to want or never to see, as boxes to tick.\n\n"
+	    << "tags to want or never to see, as boxes to tick -- and autostart,\n"
+	    << "which is what happens at login and how often the wallpaper\n"
+	    << "changes after that.\n\n"
 	    << "Those choices are kept in ~/.config/nekowall/nekowall.ini and\n"
 	    << "are what --set follows.\n";
 }
@@ -91,9 +97,19 @@ int setOnce(int argc, char *argv[])
 int main(int argc, char *argv[])
 {
 	QTextStream out(stdout);
-	QString mode;
+	QStringList arguments;
 	for (int i = 1; i < argc; ++i)
-		mode = QString::fromLocal8Bit(argv[i]);
+		arguments << QString::fromLocal8Bit(argv[i]);
+
+	// --at-login says how to read --set rather than what to do, so it is
+	// taken out of the way before the mode is looked at.
+	const bool atLogin = arguments.removeAll(QStringLiteral("--at-login")) > 0;
+	const QString mode = arguments.value(0);
+	if (arguments.size() > 1) {
+		QTextStream(stderr) << "nekowall: one thing at a time, not "
+				    << arguments.join(QLatin1Char(' ')) << '\n';
+		return 2;
+	}
 
 	if (mode == QLatin1String("--help") || mode == QLatin1String("-h")) {
 		usage(out);
@@ -110,8 +126,16 @@ int main(int argc, char *argv[])
 		out << wallpaper::describeCurrent() << '\n';
 		return 0;
 	}
-	if (mode == QLatin1String("--set"))
+	if (mode == QLatin1String("--set") || (atLogin && mode.isEmpty())) {
+		if (atLogin) {
+			const autostart::Settings settings = autostart::Settings::load();
+			if (!autostart::wantedAtLogin(settings)) {
+				out << "nekowall: the wallpaper is left as it is.\n";
+				return 0;
+			}
+		}
 		return setOnce(argc, argv);
+	}
 	if (!mode.isEmpty()) {
 		QTextStream(stderr) << "nekowall: unknown argument: " << mode << '\n';
 		usage(out);

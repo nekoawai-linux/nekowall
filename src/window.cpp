@@ -40,6 +40,36 @@ QLabel *hintLabel(const QString &text, QWidget *parent)
 	return label;
 }
 
+// A row where one pill stays pressed and pressing another releases the rest.
+// Both tabs are built out of these, so it belongs to neither.
+QWidget *pillRow(QWidget *parent, const QVector<QPair<int, QString>> &choices, int current,
+	const std::function<void(int)> &chosen, int columns)
+{
+	QWidget *holder = new QWidget(parent);
+	QGridLayout *grid = new QGridLayout(holder);
+	grid->setContentsMargins(0, 0, 0, 0);
+	grid->setSpacing(6);
+
+	QVector<QPushButton *> buttons;
+	for (int i = 0; i < choices.size(); ++i) {
+		QPushButton *button = pill(choices.at(i).second, holder);
+		button->setChecked(choices.at(i).first == current);
+		grid->addWidget(button, i / columns, i % columns);
+		buttons << button;
+	}
+	for (int i = 0; i < buttons.size(); ++i) {
+		QPushButton *button = buttons.at(i);
+		const int value = choices.at(i).first;
+		QObject::connect(button, &QPushButton::clicked, holder,
+			[buttons, button, value, chosen] {
+				for (QPushButton *other : buttons)
+					other->setChecked(other == button);
+				chosen(value);
+			});
+	}
+	return holder;
+}
+
 } // namespace
 
 FiltersTab::FiltersTab(QWidget *parent)
@@ -59,7 +89,7 @@ FiltersTab::FiltersTab(QWidget *parent)
 		inner));
 
 	layout->addWidget(sectionLabel(tr("What to search"), inner));
-	layout->addWidget(row(
+	layout->addWidget(pillRow(inner,
 		{
 			{ Filters::Safe, tr("Safe") },
 			{ Filters::Adult, tr("NSFW") },
@@ -77,7 +107,7 @@ FiltersTab::FiltersTab(QWidget *parent)
 		inner));
 
 	layout->addWidget(sectionLabel(tr("Wallpaper size"), inner));
-	layout->addWidget(row(
+	layout->addWidget(pillRow(inner,
 		{
 			{ Filters::Auto, tr("Auto") },
 			{ Filters::HD, QStringLiteral("HD") },
@@ -154,34 +184,6 @@ FiltersTab::FiltersTab(QWidget *parent)
 
 	updateTagAvailability();
 	collect();
-}
-
-QWidget *FiltersTab::row(const QVector<QPair<int, QString>> &choices, int current,
-	const std::function<void(int)> &chosen, int columns)
-{
-	QWidget *holder = new QWidget(this);
-	QGridLayout *grid = new QGridLayout(holder);
-	grid->setContentsMargins(0, 0, 0, 0);
-	grid->setSpacing(6);
-
-	QVector<QPushButton *> buttons;
-	for (int i = 0; i < choices.size(); ++i) {
-		QPushButton *button = pill(choices.at(i).second, holder);
-		button->setChecked(choices.at(i).first == current);
-		grid->addWidget(button, i / columns, i % columns);
-		buttons << button;
-	}
-	// One of a row stays pressed: pressing another releases the rest.
-	for (int i = 0; i < buttons.size(); ++i) {
-		QPushButton *button = buttons.at(i);
-		const int value = choices.at(i).first;
-		connect(button, &QPushButton::clicked, this, [buttons, button, value, chosen] {
-			for (QPushButton *other : buttons)
-				other->setChecked(other == button);
-			chosen(value);
-		});
-	}
-	return holder;
 }
 
 QWidget *FiltersTab::galleryPills()
@@ -316,6 +318,74 @@ void FiltersTab::collect()
 	emit changed(m_filters);
 }
 
+AutostartTab::AutostartTab(QWidget *parent)
+	: QWidget(parent)
+	, m_settings(autostart::Settings::load())
+{
+	QVBoxLayout *layout = new QVBoxLayout(this);
+	layout->setSpacing(6);
+
+	layout->addWidget(sectionLabel(tr("At login"), this));
+	layout->addWidget(pillRow(this,
+		{
+			{ int(autostart::Login::Never), tr("Never") },
+			{ int(autostart::Login::FirstTime), tr("Only the first time") },
+			{ int(autostart::Login::EveryLogin), tr("Every login") },
+		},
+		int(m_settings.login),
+		[this](int value) {
+			m_settings.login = autostart::Login(value);
+			m_settings.save();
+			refresh();
+		},
+		3));
+	layout->addWidget(hintLabel(
+		tr("The user unit runs at every login and asks this. Only the first time "
+		   "leaves a machine that already has a wallpaper alone -- it is how a "
+		   "fresh install stops being grey and nothing more."),
+		this));
+
+	layout->addWidget(sectionLabel(tr("While the session runs"), this));
+	QVector<QPair<int, QString>> rotation;
+	for (int minutes : autostart::intervals())
+		rotation << qMakePair(minutes, autostart::intervalName(minutes));
+	QWidget *timer = pillRow(this, rotation, m_settings.changeEvery,
+		[this](int minutes) {
+			QString error;
+			if (!autostart::applyRotation(minutes, &error)) {
+				m_status->setText(error);
+				return;
+			}
+			m_settings.changeEvery = minutes;
+			m_settings.save();
+			refresh();
+		},
+		5);
+	// Nothing to press where there is nothing to press it on: a build
+	// directory has no units and an ssh session has no user manager.
+	timer->setEnabled(autostart::available());
+	layout->addWidget(timer);
+	layout->addWidget(hintLabel(
+		tr("A systemd user timer, switched on the moment one is pressed. It runs "
+		   "with the desktop session and stops with it, and every picture it "
+		   "takes follows the filters as they are then."),
+		this));
+
+	m_status = new QLabel(this);
+	m_status->setObjectName(QStringLiteral("status"));
+	m_status->setWordWrap(true);
+	layout->addSpacing(6);
+	layout->addWidget(m_status);
+	layout->addStretch();
+
+	refresh();
+}
+
+void AutostartTab::refresh()
+{
+	m_status->setText(autostart::describe(m_settings));
+}
+
 Window::Window(QWidget *parent)
 	: QWidget(parent)
 	, m_screen(wallpaper::screenSize())
@@ -392,6 +462,7 @@ Window::Window(QWidget *parent)
 	QTabWidget *tabs = new QTabWidget(this);
 	tabs->addTab(picture, tr("Wallpaper"));
 	tabs->addTab(m_filters, tr("Filters"));
+	tabs->addTab(new AutostartTab(this), tr("Autostart"));
 
 	QVBoxLayout *layout = new QVBoxLayout(this);
 	layout->setContentsMargins(14, 10, 14, 14);

@@ -1,15 +1,16 @@
 [Unit]
-Description=Set a wallpaper from nekos.moe
+Description=Set a wallpaper at login
 Documentation=https://nekoawai.moe
-# Once there is a wallpaper, the choice belongs to whoever is sitting there.
-# This unit is for the first login of a system that has none.
-ConditionPathExists=!%h/.local/share/nekowall/current.json
 After=graphical-session.target
 PartOf=graphical-session.target
 
 [Service]
 Type=oneshot
-ExecStart=/usr/bin/nekowall --set
+# What happens at login is a setting, not a unit. The unit is enabled once,
+# for everyone, when the package is installed; --at-login then asks
+# ~/.config/nekowall/nekowall.ini what it is for. By default that is the
+# first login of a system that has no wallpaper yet, and nothing after.
+ExecStart=/usr/bin/nekowall --set --at-login
 
 [Install]
 WantedBy=graphical-session.target

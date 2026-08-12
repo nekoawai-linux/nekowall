@@ -49,8 +49,9 @@ judged after they arrive.
 
 ## The window
 
-    nekowall              the picture, and a tab of filters
+    nekowall              the picture, the filters, and the autostart
     nekowall --set        take one and apply it, no window
+    nekowall --set --at-login   the same, if the autostart setting says so
     nekowall --current    who drew the wallpaper that is set now
     nekowall --version
 
@@ -80,9 +81,33 @@ pressed pills would mean no pictures at all. So one pressed tag is drawn at
 random for each request, which keeps the promise the window makes. Danbooru
 allows an anonymous search two terms, and the rating is the second.
 
-`nekowall.service` is a systemd user unit that runs `--set` once, at the first
-login of a system that has no wallpaper yet. After that the choice is yours;
-the unit stays out of the way.
+## Autostart
+
+The third tab is what nekowall does when nobody asks it to. Two questions,
+and they are not the same one:
+
+- **At login** -- never, only the first time, or every login. Only the first
+  time is the default and what a fresh install wants: a desktop that comes up
+  grey says nothing about the system it belongs to, and once there is a
+  wallpaper the choice belongs to whoever is sitting there.
+- **While the session runs** -- never, hourly, every 3 or 6 hours, or daily.
+
+`nekowall.service` is the login unit. It is enabled once, for everyone, when
+the package is installed, and it runs `--set --at-login`, which reads the
+setting above and may well leave the wallpaper alone. So the answer lives in
+one file a person can read rather than in a symlink somewhere under
+`~/.config/systemd`.
+
+The interval is a timer, because nothing else wakes a program up in six
+hours. `nekowall-rotate.timer` is enabled the moment a pill is pressed, with
+the interval written to
+`~/.config/systemd/user/nekowall-rotate.timer.d/interval.conf`. It is bound to
+`graphical-session.target`: it runs while the desktop does and stops with it,
+and a machine somebody is logged into over ssh has no desktop to change.
+
+Where there are no units -- a build directory rather than a package -- or no
+systemd user manager, the timer pills are dimmed and the tab says which of
+the two is missing.
 
 Xfce, GNOME, KDE Plasma, Hyprland and Niri are each set through their own tool
 (`xfconf-query`, `gsettings`, `plasma-apply-wallpaperimage`, `hyprctl` with
@@ -108,8 +133,8 @@ filter can only work with the tags an uploader typed.
 
 ## Settings
 
-`~/.config/nekowall/nekowall.ini` -- written by the Filters tab, read by
-`--set`. Editing it by hand works too:
+`~/.config/nekowall/nekowall.ini` -- written by the Filters and Autostart
+tabs, read by `--set`. Editing it by hand works too:
 
     [General]
     galleries=nekos.moe, safebooru, danbooru   ; any combination
@@ -122,6 +147,10 @@ filter can only work with the tags an uploader typed.
     blockedTags=...     ; comma separated, matched inside tag names
     batch=20            ; pictures asked for at once
     tries=6             ; pictures downloaded before settling for the best so far
+    autostart=once      ; off, once, login -- what --at-login does
+    changeEvery=0       ; minutes between pictures; 0, 60, 180, 360 or 1440.
+                        ; The window enables the timer as well; this key
+                        ; alone only says what it was asked for.
 
 ## Building
 
@@ -138,8 +167,9 @@ looks like a control panel on one and a form on another belongs to none.
     make dist      reproducible release archive
 
 The archive is what [nekoawai-linux](https://github.com/nekoawai-linux/nekoawai-linux)
-packages as the `nekowall` RPM. `patterns-nekoawai-desktop-base` requires it,
-so every NekoAwai desktop has it and the minimal profile does not.
+packages as the `nekowall` RPM. `patterns-nekoawai-desktop-base` recommends
+it, so every NekoAwai desktop has it unless the installer was told otherwise,
+and the minimal profile does not.
 
 ## Manners
 

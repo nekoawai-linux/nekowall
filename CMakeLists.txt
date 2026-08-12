@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.22)
 
-project(nekowall VERSION 0.4.0 LANGUAGES CXX)
+project(nekowall VERSION 0.5.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -14,6 +14,7 @@ find_package(Qt6 6.4 REQUIRED COMPONENTS Core Gui Widgets Network)
 
 add_executable(nekowall
 	src/main.cpp
+	src/autostart.cpp
 	src/filters.cpp
 	src/source.cpp
 	src/theme.cpp
@@ -27,4 +28,8 @@ target_link_libraries(nekowall PRIVATE Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Netw
 install(TARGETS nekowall RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 install(FILES data/nekowall.desktop DESTINATION ${CMAKE_INSTALL_DATADIR}/applications)
 # The user manager reads its units from below the prefix, never from lib64.
-install(FILES data/nekowall.service DESTINATION lib/systemd/user)
+install(FILES
+	data/nekowall.service
+	data/nekowall-rotate.service
+	data/nekowall-rotate.timer
+	DESTINATION lib/systemd/user)

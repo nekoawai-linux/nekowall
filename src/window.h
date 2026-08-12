@@ -5,6 +5,7 @@
 #include <QSize>
 #include <QWidget>
 
+#include "autostart.h"
 #include "filters.h"
 #include "source.h"
 
@@ -26,8 +27,6 @@ signals:
 	void changed(const Filters &filters);
 
 private:
-	QWidget *row(const QVector<QPair<int, QString>> &choices, int current,
-		const std::function<void(int)> &chosen, int columns = 4);
 	QWidget *galleryPills();
 	QWidget *wantedGrid();
 	QWidget *blockedGrid();
@@ -41,6 +40,22 @@ private:
 	QSpinBox *m_customWidth = nullptr;
 	QSpinBox *m_customHeight = nullptr;
 	QLabel *m_summary = nullptr;
+};
+
+// What nekowall does when nobody asks it to: one picture at login, and
+// another one every so often after that. Both are pills as well; the timer
+// is switched on the moment one is pressed, not on the next launch.
+class AutostartTab : public QWidget {
+	Q_OBJECT
+
+public:
+	explicit AutostartTab(QWidget *parent = nullptr);
+
+private:
+	void refresh();
+
+	autostart::Settings m_settings;
+	QLabel *m_status = nullptr;
 };
 
 // One picture at a time: what the desktop would look like, who drew it, and

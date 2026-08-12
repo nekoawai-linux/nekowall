@@ -1,0 +1,19 @@
+[Unit]
+Description=Change the nekowall wallpaper now and then
+Documentation=https://nekoawai.moe
+PartOf=graphical-session.target
+
+[Timer]
+# Bound to the session rather than to timers.target: a wallpaper is set on a
+# desktop that is running, and a machine somebody is logged into over ssh
+# has none to set it on.
+#
+# Both settings are lists. The window writes the interval it was asked for
+# into a drop-in of its own, which clears them first; these two are what a
+# timer enabled by hand keeps to.
+OnActiveSec=6h
+OnUnitActiveSec=6h
+Unit=nekowall-rotate.service
+
+[Install]
+WantedBy=graphical-session.target
